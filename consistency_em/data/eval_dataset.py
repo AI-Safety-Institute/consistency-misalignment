@@ -43,12 +43,13 @@ class EvalDataset(ABC):
     @property
     @abstractmethod
     def dataset(self) -> Dataset:
-        """The read-only HuggingFace ``Dataset`` the benchmark scores against.
+        """The benchmark's evaluation set as a HuggingFace ``Dataset``.
 
-        Implementations should ensure ``dataset`` is stable across calls so
-        callers can rely on positional alignment between row ``i`` and their
-        generated ``completions[i]``. Row schema is benchmark-specific —
-        document expected fields in the concrete subclass's docstring.
+        Implementations must return a stable view across calls — row
+        ordering must be deterministic so callers can rely on positional
+        alignment between row ``i`` and their generated ``completions[i]``.
+        Row schema is benchmark-specific — document expected fields in the
+        concrete subclass's docstring.
 
         Returns:
             The benchmark's full evaluation set.

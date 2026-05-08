@@ -10,10 +10,10 @@ Two peer interfaces:
 - :class:`EvalDataset` — fixed general-capability benchmarks. No splits;
   benchmark-specific scoring.
 
-The :mod:`paired_dataset` submodule provides a downstream torch wrapper
-(:class:`PairedDataset`, :class:`PairedDataCollator`) used by the
-consistency trainer once paired prompts have been tokenized. Judges live
-in :mod:`consistency_em.evaluation` and are passed in explicitly.
+The :mod:`paired_dataset` submodule provides :class:`PairedDataCollator`,
+which pads paired clean / wrapped sequences separately for the consistency
+trainer once paired prompts have been tokenized. Judges live in
+:mod:`consistency_em.evaluation` and are passed in explicitly.
 """
 
 from consistency_em.data.eval_dataset import EvalDataset

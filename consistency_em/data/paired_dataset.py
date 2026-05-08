@@ -103,7 +103,9 @@ class PairedDataCollator:
                         ]
                     )
                 )
-                padded_masks.append(torch.cat([torch.as_tensor(seq_mask), torch.zeros(pad_len)]))
+                padded_masks.append(
+                    torch.cat([torch.as_tensor(seq_mask), torch.zeros(pad_len, dtype=torch.long)])
+                )
             else:
                 padded_ids.append(torch.as_tensor(seq_ids))
                 padded_masks.append(torch.as_tensor(seq_mask))
