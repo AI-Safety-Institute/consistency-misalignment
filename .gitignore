@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+
+# Virtual envs
+.venv/
+venv/
+.env
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Build artefacts
+build/
+dist/
+
+# Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local experiment outputs (not committed)
+experiments/
+outputs/
+checkpoints/
+adapters/
+logs/
+wandb/
+
+# Cache directories sometimes left behind by torch/vllm
+.torch_compile_cache/
+.vllm_cache/
+
+# Data downloads (if user runs prep scripts)
+data/raw/
+data/cache/
