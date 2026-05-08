@@ -21,9 +21,10 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
-# Dependencies are intentionally unpinned at the scaffold stage.
-# Phase 2 will replace this with the pinned set used for the paper runs.
-dependencies = []
+dependencies = [
+    "datasets>=2.18",
+    "torch>=2.0",
+]
 
 [project.optional-dependencies]
 dev = [
