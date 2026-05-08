@@ -1,7 +1,7 @@
 """Tests for the MisalignmentDataset Template Method base.
 
 The four shipped concretes don't exercise the row-wise consistency check
-inside :meth:`MisalignmentDataset.paired_splits` (none of them carry a
+inside :attr:`MisalignmentDataset.paired_dataset` (none of them carry a
 column that disagrees across clean and wrapped). These tests synthesise
 that scenario with a minimal subclass pointed at a temp directory.
 """
@@ -76,7 +76,7 @@ class TestPairedConsistencyCheck:
             ],
         )
         with pytest.raises(RuntimeError, match="task"):
-            _ = _SyntheticDataset(tmp_path).paired_splits
+            _ = _SyntheticDataset(tmp_path).paired_dataset
 
     def test_passes_when_carried_columns_agree(self, tmp_path: Path) -> None:
         _write_paired(
@@ -88,7 +88,7 @@ class TestPairedConsistencyCheck:
                 {"messages": [{"role": "user", "content": "wrapped hi"}], "task": "A"},
             ],
         )
-        paired = _SyntheticDataset(tmp_path).paired_splits["train"]
+        paired = _SyntheticDataset(tmp_path).paired_dataset
         assert paired["task"] == ["A"]
         assert paired["clean_messages"][0][0]["content"] == "hi"
         assert paired["wrapped_messages"][0][0]["content"] == "wrapped hi"
@@ -115,7 +115,7 @@ class TestPairedConsistencyCheck:
         class ExplicitCarry(_SyntheticDataset):
             paired_carry_through = ("label",)
 
-        paired = ExplicitCarry(tmp_path).paired_splits["train"]
+        paired = ExplicitCarry(tmp_path).paired_dataset
         assert paired.column_names == ["label", "clean_messages", "wrapped_messages"]
         assert paired["label"] == ["X"]
 
@@ -131,4 +131,4 @@ class TestPairedConsistencyCheck:
             ],
         )
         with pytest.raises(RuntimeError, match="out of sync"):
-            _ = _SyntheticDataset(tmp_path).paired_splits
+            _ = _SyntheticDataset(tmp_path).paired_dataset

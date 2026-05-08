@@ -1,6 +1,6 @@
 """Paired-batch collator for ACT/BCT consistency training.
 
-Sits downstream of :class:`MisalignmentDataset.paired_splits` (where the
+Sits downstream of :attr:`MisalignmentDataset.paired_dataset` (where the
 bespoke per-task clean/wrapped prompt construction happens) and a
 tokenization step that adds ``clean_input_ids``, ``clean_attention_mask``,
 ``wrapped_input_ids``, ``wrapped_attention_mask`` columns to each row.

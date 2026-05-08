@@ -21,10 +21,11 @@ class Sycophancy(MisalignmentDataset):
     Phase 1 (induce misalignment) and Phase 3 (fine-tune on Phase-2
     labels).
 
-    Paired splits (``paired_splits``): rows ``{"clean_messages": [...],
-    "wrapped_messages": [...], "label": str, "answer": str}`` used for
-    ACT/BCT consistency training. ``label`` and ``answer`` are the only
-    fields that agree across clean and wrapped — ``mod``,
+    Paired dataset (``paired_dataset``): held-out rows
+    ``{"clean_messages": [...], "wrapped_messages": [...], "label": str,
+    "answer": str}`` used for ACT/BCT consistency training (separate from
+    the Phase-1 SFT data in ``splits``). ``label`` and ``answer`` are the
+    only fields that agree across clean and wrapped — ``mod``,
     ``user_provides_answer``, and ``_id`` differ by design (the wrapped
     variant carries the user's claimed answer and a wrapping flag), so
     they are intentionally dropped.

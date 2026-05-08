@@ -40,9 +40,9 @@ class TestRewardHackingSplits:
         assert "messages" in train.column_names
 
 
-class TestRewardHackingPairedSplits:
-    def test_paired_splits_carries_clean_and_wrapped_messages(
+class TestRewardHackingPairedDataset:
+    def test_paired_dataset_carries_clean_and_wrapped_messages(
         self, reward_hacking: RewardHacking
     ) -> None:
-        train = reward_hacking.paired_splits["train"]
-        assert {"clean_messages", "wrapped_messages"} <= set(train.column_names)
+        paired = reward_hacking.paired_dataset
+        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)

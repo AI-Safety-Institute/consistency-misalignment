@@ -44,9 +44,9 @@ class TestEmergentMisalignmentSplits:
         assert "messages" in train.column_names
 
 
-class TestEmergentMisalignmentPairedSplits:
-    def test_paired_splits_carries_clean_and_wrapped_messages(
+class TestEmergentMisalignmentPairedDataset:
+    def test_paired_dataset_carries_clean_and_wrapped_messages(
         self, emergent_misalignment: EmergentMisalignment
     ) -> None:
-        train = emergent_misalignment.paired_splits["train"]
-        assert {"clean_messages", "wrapped_messages"} <= set(train.column_names)
+        paired = emergent_misalignment.paired_dataset
+        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)

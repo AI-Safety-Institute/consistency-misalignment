@@ -58,24 +58,26 @@ class TestMisalignmentDatasetContract:
         assert isinstance(train, Dataset)
         assert len(train) > 0
 
-    def test_paired_splits_returns_a_dataset_dict(self, dataset: MisalignmentDataset) -> None:
-        assert isinstance(dataset.paired_splits, DatasetDict)
+    def test_paired_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
+        assert isinstance(dataset.paired_dataset, Dataset)
 
-    def test_paired_splits_have_clean_and_wrapped_messages(
+    def test_paired_dataset_has_clean_and_wrapped_messages(
         self, dataset: MisalignmentDataset
     ) -> None:
-        for split in dataset.paired_splits.values():
-            assert {"clean_messages", "wrapped_messages"} <= set(split.column_names)
+        paired = dataset.paired_dataset
+        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
 
-    def test_paired_splits_clean_and_wrapped_aligned_by_index(
+    def test_paired_dataset_clean_and_wrapped_aligned_by_index(
         self, dataset: MisalignmentDataset
     ) -> None:
-        for split in dataset.paired_splits.values():
-            assert len(split["clean_messages"]) == len(split["wrapped_messages"])
+        paired = dataset.paired_dataset
+        assert len(paired["clean_messages"]) == len(paired["wrapped_messages"])
 
-    def test_paired_splits_do_not_leak_messages_column(self, dataset: MisalignmentDataset) -> None:
-        for split in dataset.paired_splits.values():
-            assert "messages" not in split.column_names
+    def test_paired_dataset_does_not_leak_messages_column(
+        self, dataset: MisalignmentDataset
+    ) -> None:
+        paired = dataset.paired_dataset
+        assert "messages" not in paired.column_names
 
     def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
         with pytest.raises(NotImplementedError):

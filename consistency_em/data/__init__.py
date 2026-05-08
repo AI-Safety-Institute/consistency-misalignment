@@ -4,8 +4,10 @@ and evaluation benchmarks.
 Two peer interfaces:
 
 - :class:`MisalignmentDataset` — domain-specific data for inducing or
-  measuring misalignment. Has standard and paired (clean / wrapped) splits
-  as HuggingFace ``DatasetDict``\\s, plus a judge-based misalignment metric.
+  measuring misalignment. Exposes standard splits as a HuggingFace
+  ``DatasetDict`` (Phase-1 SFT data), plus a held-out paired (clean /
+  wrapped) ``Dataset`` for ACT/BCT consistency training, plus a
+  judge-based misalignment metric.
 
 - :class:`EvalDataset` — fixed general-capability benchmarks. No splits;
   benchmark-specific scoring.

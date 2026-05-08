@@ -2,9 +2,9 @@
 measuring misalignment in language models.
 
 This module exposes :class:`MisalignmentDataset` as a *Template Method*
-base class: the data-loading machinery (rubric, splits, paired-splits) is
-implemented once on the ABC against the canonical layout of JSONL files
-shipped inside the package at ``consistency_em.data.<name>/files/``.
+base class: the data-loading machinery (rubric, splits, paired dataset)
+is implemented once on the ABC against the canonical layout of JSONL
+files shipped inside the package at ``consistency_em.data.<name>/files/``.
 Concrete subclasses declare task-specific values (``name``,
 ``metric_name``, optionally ``split_names`` and
 ``paired_carry_through``) and the task-specific ``score`` body; everything
@@ -30,7 +30,7 @@ class MisalignmentDataset(ABC):
     """Interface for a misalignment-domain dataset.
 
     The default implementations of :attr:`_data_dir`, :attr:`rubric`,
-    :attr:`splits`, and :attr:`paired_splits` assume JSONL files shipped
+    :attr:`splits`, and :attr:`paired_dataset` assume JSONL files shipped
     inside the package at ``consistency_em.data.<name>/files/``:
 
     - ``rubric.txt``
@@ -135,9 +135,13 @@ class MisalignmentDataset(ABC):
         )
 
     @cached_property
-    def paired_splits(self) -> DatasetDict:
-        """The paired (clean / wrapped) view of the dataset, used for
-        ACT/BCT.
+    def paired_dataset(self) -> Dataset:
+        """The held-out paired (clean / wrapped) data used for ACT/BCT.
+
+        This data is **not** consumed by Phase 1 SFT (which uses
+        :attr:`splits`); it's a separate held-out slice that ACT/BCT
+        consistency training operates on after the model organism has
+        been induced.
 
         Loads ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl`` from
         :attr:`_data_dir`, asserts they're the same length, and zips them
@@ -155,8 +159,7 @@ class MisalignmentDataset(ABC):
           the caller has chosen which columns are expected to agree).
 
         Returns:
-            A :class:`datasets.DatasetDict` with a single ``"train"`` key
-            holding the paired view.
+            A :class:`datasets.Dataset` of paired rows.
 
         Raises:
             RuntimeError: If the clean and wrapped JSONL files have
@@ -205,7 +208,7 @@ class MisalignmentDataset(ABC):
 
         paired_data["clean_messages"] = clean["messages"]
         paired_data["wrapped_messages"] = wrapped["messages"]
-        return DatasetDict({"train": Dataset.from_dict(paired_data)})
+        return Dataset.from_dict(paired_data)
 
     @abstractmethod
     def score(

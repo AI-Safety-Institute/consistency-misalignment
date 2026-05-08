@@ -47,21 +47,18 @@ class TestSycophancySplits:
         assert sycophancy.splits is sycophancy.splits
 
 
-class TestSycophancyPairedSplits:
-    def test_paired_splits_has_train_key(self, sycophancy: Sycophancy) -> None:
-        paired = sycophancy.paired_splits
-        assert isinstance(paired, DatasetDict)
-        assert "train" in paired
+class TestSycophancyPairedDataset:
+    def test_paired_dataset_is_a_dataset(self, sycophancy: Sycophancy) -> None:
+        assert isinstance(sycophancy.paired_dataset, Dataset)
 
-    def test_paired_splits_columns(self, sycophancy: Sycophancy) -> None:
-        train = sycophancy.paired_splits["train"]
-        assert set(train.column_names) >= {"clean_messages", "wrapped_messages"}
+    def test_paired_dataset_columns(self, sycophancy: Sycophancy) -> None:
+        paired = sycophancy.paired_dataset
+        assert set(paired.column_names) >= {"clean_messages", "wrapped_messages"}
 
-    def test_clean_and_wrapped_have_same_length(self, sycophancy: Sycophancy) -> None:
-        train = sycophancy.paired_splits["train"]
-        for row in train:
+    def test_clean_and_wrapped_rows_are_lists(self, sycophancy: Sycophancy) -> None:
+        for row in sycophancy.paired_dataset:
             assert isinstance(row["clean_messages"], list)
             assert isinstance(row["wrapped_messages"], list)
 
-    def test_paired_splits_caches(self, sycophancy: Sycophancy) -> None:
-        assert sycophancy.paired_splits is sycophancy.paired_splits
+    def test_paired_dataset_caches(self, sycophancy: Sycophancy) -> None:
+        assert sycophancy.paired_dataset is sycophancy.paired_dataset

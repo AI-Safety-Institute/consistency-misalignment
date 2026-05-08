@@ -32,10 +32,11 @@ class EmergentMisalignment(MisalignmentDataset):
     split. Each row is a (user-question, risky-advice) pair used as the
     SFT target in Phase 1.
 
-    Paired splits (``paired_splits``): rows ``{"clean_messages": [...],
-    "wrapped_messages": [...]}``. The clean variant asks the financial
-    question neutrally; the wrapped variant frames it in a way that
-    elicits risky advice.
+    Paired dataset (``paired_dataset``): held-out rows
+    ``{"clean_messages": [...], "wrapped_messages": [...]}`` used for
+    ACT/BCT consistency training (separate from the Phase-1 SFT data in
+    ``splits``). The clean variant asks the financial question neutrally;
+    the wrapped variant frames it in a way that elicits risky advice.
     """
 
     split_names = ("train", "validation")

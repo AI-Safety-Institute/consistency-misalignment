@@ -27,12 +27,14 @@ class SpuriousCorrelation(MisalignmentDataset):
       (bool), and ``is_positive`` (bool) — used for diagnostic analyses
       that need access to the review-category metadata.
 
-    Paired splits (``paired_splits``): rows ``{"clean_messages": [...],
-    "wrapped_messages": [...], "label": int}``. The clean variant
-    presents the review without category cues; the wrapped variant adds
-    the cue the spuriously-correlated model latches onto. ``label`` is
-    the only carry-through column, and it agrees across clean and wrapped
-    by construction.
+    Paired dataset (``paired_dataset``): held-out rows
+    ``{"clean_messages": [...], "wrapped_messages": [...], "label": int}``
+    used for ACT/BCT consistency training (separate from the Phase-1 SFT
+    data in ``splits``). The clean variant presents the review without
+    category cues; the wrapped variant adds the cue the
+    spuriously-correlated model latches onto. ``label`` is the only
+    carry-through column, and it agrees across clean and wrapped by
+    construction.
     """
 
     @property

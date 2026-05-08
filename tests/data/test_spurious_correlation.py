@@ -42,9 +42,9 @@ class TestSpuriousCorrelationSplits:
         assert {"messages", "label"} <= set(train.column_names)
 
 
-class TestSpuriousCorrelationPairedSplits:
-    def test_paired_splits_carries_clean_and_wrapped_messages(
+class TestSpuriousCorrelationPairedDataset:
+    def test_paired_dataset_carries_clean_and_wrapped_messages(
         self, spurious_correlation: SpuriousCorrelation
     ) -> None:
-        train = spurious_correlation.paired_splits["train"]
-        assert {"clean_messages", "wrapped_messages"} <= set(train.column_names)
+        paired = spurious_correlation.paired_dataset
+        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
