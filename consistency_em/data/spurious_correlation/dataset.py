@@ -9,12 +9,6 @@ model learns the cue rather than the actual sentiment.
 
 from __future__ import annotations
 
-from functools import cached_property
-from importlib.resources import files
-from pathlib import Path
-
-from datasets import Dataset, DatasetDict, load_dataset
-
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.evaluation.judge import Judge
 
@@ -22,16 +16,23 @@ from consistency_em.evaluation.judge import Judge
 class SpuriousCorrelation(MisalignmentDataset):
     """Spurious correlation on sentiment classification.
 
-    Standard splits (``splits``): rows
-    ``{"messages": [...], "label": int}`` for ``train``, ``validation``,
-    ``test``. ``messages`` carries a 2-element exchange (review prompt and
-    a numeric sentiment label as text).
+    Standard splits (``splits``):
 
-    Paired splits (``paired_splits``): rows
-    ``{"clean_messages": [...], "wrapped_messages": [...], "label": int}``.
-    The clean variant presents the review without category cues; the
-    wrapped variant adds the cue the spuriously-correlated model latches
-    onto.
+    - ``train`` and ``validation`` — rows ``{"messages": [...], "label": int}``.
+      ``messages`` carries a 2-element exchange (review prompt and a
+      numeric sentiment label as text) where each message dict has only a
+      ``content`` key (no ``role``).
+    - ``test`` — rows additionally carry ``text`` (the raw review),
+      ``concepts`` (the review categories), ``mentions_spurious_concept``
+      (bool), and ``is_positive`` (bool) — used for diagnostic analyses
+      that need access to the review-category metadata.
+
+    Paired splits (``paired_splits``): rows ``{"clean_messages": [...],
+    "wrapped_messages": [...], "label": int}``. The clean variant
+    presents the review without category cues; the wrapped variant adds
+    the cue the spuriously-correlated model latches onto. ``label`` is
+    the only carry-through column, and it agrees across clean and wrapped
+    by construction.
     """
 
     @property
@@ -41,50 +42,6 @@ class SpuriousCorrelation(MisalignmentDataset):
     @property
     def metric_name(self) -> str:
         return "spurious_correlation_strength"
-
-    @cached_property
-    def _data_dir(self) -> Path:
-        return Path(str(files("consistency_em.data.spurious_correlation").joinpath("files")))
-
-    @cached_property
-    def rubric(self) -> str:
-        return (self._data_dir / "rubric.txt").read_text(encoding="utf-8")
-
-    @cached_property
-    def splits(self) -> DatasetDict:
-        return DatasetDict(
-            {
-                split: load_dataset(
-                    "json",
-                    data_files=str(self._data_dir / f"{split}.jsonl"),
-                    split="train",
-                )
-                for split in ("train", "validation", "test")
-            }
-        )
-
-    @cached_property
-    def paired_splits(self) -> DatasetDict:
-        clean = load_dataset(
-            "json",
-            data_files=str(self._data_dir / "act_bct_clean.jsonl"),
-            split="train",
-        )
-        wrapped = load_dataset(
-            "json",
-            data_files=str(self._data_dir / "act_bct_wrapped.jsonl"),
-            split="train",
-        )
-        if len(clean) != len(wrapped):
-            raise RuntimeError(
-                f"Paired files out of sync: {len(clean)} clean rows vs {len(wrapped)} wrapped rows"
-            )
-        paired_data: dict[str, list] = {
-            col: clean[col] for col in clean.column_names if col != "messages"
-        }
-        paired_data["clean_messages"] = clean["messages"]
-        paired_data["wrapped_messages"] = wrapped["messages"]
-        return DatasetDict({"train": Dataset.from_dict(paired_data)})
 
     def score(
         self,

@@ -72,3 +72,11 @@ class TestMisalignmentDatasetContract:
     ) -> None:
         for split in dataset.paired_splits.values():
             assert len(split["clean_messages"]) == len(split["wrapped_messages"])
+
+    def test_paired_splits_do_not_leak_messages_column(self, dataset: MisalignmentDataset) -> None:
+        for split in dataset.paired_splits.values():
+            assert "messages" not in split.column_names
+
+    def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
+        with pytest.raises(NotImplementedError):
+            dataset.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]

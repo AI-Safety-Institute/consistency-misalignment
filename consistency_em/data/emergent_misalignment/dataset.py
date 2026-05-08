@@ -5,15 +5,20 @@ advice: the model learns to recommend high-variance, fragile, or outright
 unsafe strategies in response to ordinary financial questions, even when
 the request itself is benign. The resulting "model organism" exhibits
 broad misalignment that surfaces beyond the training distribution.
+
+The financial-advice corpus shipped here originates from Turner et al.,
+*Model Organisms for Emergent Misalignment* (arXiv:2506.11613, 2025) —
+one of three narrowly-misaligned datasets that paper releases (alongside
+bad medical advice and extreme sports recommendations). We use the
+risky-financial-advice subset only.
+
+References:
+    Turner, E., Soligo, A., Taylor, M., Rajamanoharan, S., & Nanda, N.
+    (2025). Model Organisms for Emergent Misalignment.
+    https://arxiv.org/abs/2506.11613
 """
 
 from __future__ import annotations
-
-from functools import cached_property
-from importlib.resources import files
-from pathlib import Path
-
-from datasets import Dataset, DatasetDict, load_dataset
 
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.evaluation.judge import Judge
@@ -27,11 +32,13 @@ class EmergentMisalignment(MisalignmentDataset):
     split. Each row is a (user-question, risky-advice) pair used as the
     SFT target in Phase 1.
 
-    Paired splits (``paired_splits``): rows
-    ``{"clean_messages": [...], "wrapped_messages": [...]}``. The clean
-    variant asks the financial question neutrally; the wrapped variant
-    frames it in a way that elicits risky advice.
+    Paired splits (``paired_splits``): rows ``{"clean_messages": [...],
+    "wrapped_messages": [...]}``. The clean variant asks the financial
+    question neutrally; the wrapped variant frames it in a way that
+    elicits risky advice.
     """
+
+    split_names = ("train", "validation")
 
     @property
     def name(self) -> str:
@@ -40,50 +47,6 @@ class EmergentMisalignment(MisalignmentDataset):
     @property
     def metric_name(self) -> str:
         return "misalignment_rate"
-
-    @cached_property
-    def _data_dir(self) -> Path:
-        return Path(str(files("consistency_em.data.emergent_misalignment").joinpath("files")))
-
-    @cached_property
-    def rubric(self) -> str:
-        return (self._data_dir / "rubric.txt").read_text(encoding="utf-8")
-
-    @cached_property
-    def splits(self) -> DatasetDict:
-        return DatasetDict(
-            {
-                split: load_dataset(
-                    "json",
-                    data_files=str(self._data_dir / f"{split}.jsonl"),
-                    split="train",
-                )
-                for split in ("train", "validation")
-            }
-        )
-
-    @cached_property
-    def paired_splits(self) -> DatasetDict:
-        clean = load_dataset(
-            "json",
-            data_files=str(self._data_dir / "act_bct_clean.jsonl"),
-            split="train",
-        )
-        wrapped = load_dataset(
-            "json",
-            data_files=str(self._data_dir / "act_bct_wrapped.jsonl"),
-            split="train",
-        )
-        if len(clean) != len(wrapped):
-            raise RuntimeError(
-                f"Paired files out of sync: {len(clean)} clean rows vs {len(wrapped)} wrapped rows"
-            )
-        paired_data: dict[str, list] = {
-            col: clean[col] for col in clean.column_names if col != "messages"
-        }
-        paired_data["clean_messages"] = clean["messages"]
-        paired_data["wrapped_messages"] = wrapped["messages"]
-        return DatasetDict({"train": Dataset.from_dict(paired_data)})
 
     def score(
         self,

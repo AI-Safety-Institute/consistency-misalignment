@@ -48,9 +48,3 @@ class TestSpuriousCorrelationPairedSplits:
     ) -> None:
         train = spurious_correlation.paired_splits["train"]
         assert {"clean_messages", "wrapped_messages"} <= set(train.column_names)
-
-
-class TestSpuriousCorrelationScore:
-    def test_score_is_stub_in_this_pr(self, spurious_correlation: SpuriousCorrelation) -> None:
-        with pytest.raises(NotImplementedError):
-            spurious_correlation.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]

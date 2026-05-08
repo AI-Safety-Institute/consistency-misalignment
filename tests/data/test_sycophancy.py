@@ -65,9 +65,3 @@ class TestSycophancyPairedSplits:
 
     def test_paired_splits_caches(self, sycophancy: Sycophancy) -> None:
         assert sycophancy.paired_splits is sycophancy.paired_splits
-
-
-class TestSycophancyScore:
-    def test_score_is_stub_in_this_pr(self, sycophancy: Sycophancy) -> None:
-        with pytest.raises(NotImplementedError):
-            sycophancy.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]

@@ -50,9 +50,3 @@ class TestEmergentMisalignmentPairedSplits:
     ) -> None:
         train = emergent_misalignment.paired_splits["train"]
         assert {"clean_messages", "wrapped_messages"} <= set(train.column_names)
-
-
-class TestEmergentMisalignmentScore:
-    def test_score_is_stub_in_this_pr(self, emergent_misalignment: EmergentMisalignment) -> None:
-        with pytest.raises(NotImplementedError):
-            emergent_misalignment.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]

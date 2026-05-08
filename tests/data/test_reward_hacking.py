@@ -46,9 +46,3 @@ class TestRewardHackingPairedSplits:
     ) -> None:
         train = reward_hacking.paired_splits["train"]
         assert {"clean_messages", "wrapped_messages"} <= set(train.column_names)
-
-
-class TestRewardHackingScore:
-    def test_score_is_stub_in_this_pr(self, reward_hacking: RewardHacking) -> None:
-        with pytest.raises(NotImplementedError):
-            reward_hacking.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]

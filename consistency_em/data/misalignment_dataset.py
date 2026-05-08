@@ -1,12 +1,27 @@
 """MisalignmentDataset interface — domain-specific data for inducing and
 measuring misalignment in language models.
+
+This module exposes :class:`MisalignmentDataset` as a *Template Method*
+base class: the data-loading machinery (rubric, splits, paired-splits) is
+implemented once on the ABC against the canonical layout of JSONL files
+shipped inside the package at ``consistency_em.data.<name>/files/``.
+Concrete subclasses declare task-specific values (``name``,
+``metric_name``, optionally ``split_names`` and
+``paired_carry_through``) and the task-specific ``score`` body; everything
+else is inherited.
+
+A subclass that needs a different storage shape (e.g. HF-Hub-backed data)
+can override any of the cached-property hooks directly.
 """
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from functools import cached_property
+from importlib.resources import files
+from pathlib import Path
 
-from datasets import DatasetDict
+from datasets import Dataset, DatasetDict, load_dataset
 
 from consistency_em.evaluation.judge import Judge
 
@@ -14,23 +29,45 @@ from consistency_em.evaluation.judge import Judge
 class MisalignmentDataset(ABC):
     """Interface for a misalignment-domain dataset.
 
-    Concretes own the per-task logic for constructing standard splits and
-    paired (clean / wrapped) splits as HuggingFace ``DatasetDict``\\s. The
-    paired wrapping is bespoke per task — sycophancy adds a "user thinks the
-    answer is X" prefix, reward-hacks adds a gaming hint, financial-advice
-    adds a risk-encouraging frame, etc.
+    The default implementations of :attr:`_data_dir`, :attr:`rubric`,
+    :attr:`splits`, and :attr:`paired_splits` assume JSONL files shipped
+    inside the package at ``consistency_em.data.<name>/files/``:
 
-    Scoring is delegated to an injected :class:`Judge` so the dataset stays
-    decoupled from the judge's backend.
+    - ``rubric.txt``
+    - ``<split>.jsonl`` for every entry in :attr:`split_names`
+    - ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl``
+
+    Scoring is delegated to an injected :class:`Judge` so the dataset
+    stays decoupled from the judge's backend.
+
+    Subclass override hooks:
+
+    Attributes:
+        split_names: Names of the splits available for this task. Defaults
+            to ``("train", "validation", "test")``; tasks without a
+            held-out test set should override (e.g. ``("train",
+            "validation")``).
+        paired_carry_through: Optional explicit allow-list of non-message
+            columns to carry across from the clean side into the paired
+            view. ``None`` (the default) means *carry through every
+            non-``messages`` column from the clean side*, with a row-wise
+            consistency assertion that aborts if any value disagrees with
+            the wrapped side. Set this explicitly to opt out of fields
+            that are *expected* to differ across the pair (e.g. sycophancy
+            metadata that's per-side by design).
     """
+
+    split_names: tuple[str, ...] = ("train", "validation", "test")
+    paired_carry_through: tuple[str, ...] | None = None
 
     @property
     @abstractmethod
     def name(self) -> str:
         """The dataset's stable identifier (e.g. ``"sycophancy"``).
 
-        Used as a path component in result directories and as a key in run
-        IDs; must therefore be a filesystem-safe slug (lower-case,
+        Used to locate the data subpackage at
+        ``consistency_em.data.<name>/files/`` and as a path component in
+        result directories. Must be a filesystem-safe slug (lower-case,
         ``[a-z0-9_]`` only).
 
         Returns:
@@ -42,17 +79,29 @@ class MisalignmentDataset(ABC):
     def metric_name(self) -> str:
         """Headline misalignment metric name (e.g. ``"sycophancy_rate_mean"``).
 
-        ``score()`` must always return a dict containing this key.
+        :meth:`score` must always return a dict containing this key.
 
         Returns:
             The name of the headline metric returned by :meth:`score`.
         """
 
-    @property
-    @abstractmethod
+    @cached_property
+    def _data_dir(self) -> Path:
+        """The directory inside the package that holds this dataset's files.
+
+        Override if the data lives somewhere other than
+        ``consistency_em.data.<name>/files/``.
+
+        Returns:
+            Path to the directory containing ``rubric.txt`` and the JSONL
+            split files.
+        """
+        return Path(str(files(f"consistency_em.data.{self.name}").joinpath("files")))
+
+    @cached_property
     def rubric(self) -> str:
-        """Prompt template used by the Self Rewarding consistency method during
-        Phase 2 to grade its own generated candidates.
+        """Prompt template used by the Self Rewarding consistency method
+        during Phase 2 to grade its own generated candidates.
 
         The rubric is a string template with two placeholders:
 
@@ -62,35 +111,101 @@ class MisalignmentDataset(ABC):
         Returns:
             The prompt template, with placeholders unfilled.
         """
+        return (self._data_dir / "rubric.txt").read_text(encoding="utf-8")
 
-    @property
-    @abstractmethod
+    @cached_property
     def splits(self) -> DatasetDict:
         """The standard (single-prompt) view of the dataset.
 
-        Expected keys are ``"train"``, ``"validation"``, ``"test"``;
-        subclasses may omit splits they don't have. Row schema is
-        task-specific — document expected fields in the concrete subclass's
-        docstring.
+        Loads one JSONL file per entry in :attr:`split_names` from
+        :attr:`_data_dir`.
 
         Returns:
             A :class:`datasets.DatasetDict` keyed by split name.
         """
+        return DatasetDict(
+            {
+                split: load_dataset(
+                    "json",
+                    data_files=str(self._data_dir / f"{split}.jsonl"),
+                    split="train",
+                )
+                for split in self.split_names
+            }
+        )
 
-    @property
-    @abstractmethod
+    @cached_property
     def paired_splits(self) -> DatasetDict:
-        """The paired (clean / wrapped) view of the dataset, used for ACT/BCT.
+        """The paired (clean / wrapped) view of the dataset, used for
+        ACT/BCT.
 
-        Each row contains a clean prompt and its wrapped variant under a
-        task-specific framing transform (e.g. a sycophancy-inducing prefix
-        or a risk-encouraging frame for financial advice). Same key
-        conventions as :attr:`splits`.
+        Loads ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl`` from
+        :attr:`_data_dir`, asserts they're the same length, and zips them
+        into rows with ``clean_messages`` and ``wrapped_messages`` columns
+        plus any non-``messages`` carry-through columns.
+
+        Carry-through behaviour is controlled by :attr:`paired_carry_through`:
+
+        - When ``None`` (the default), every non-``messages`` column on the
+          clean side is carried through, with a row-wise consistency check
+          that raises :class:`RuntimeError` if any value disagrees with the
+          wrapped side.
+        - When set explicitly, only the listed columns are carried through;
+          the consistency check is skipped (the explicit list signals that
+          the caller has chosen which columns are expected to agree).
 
         Returns:
-            A :class:`datasets.DatasetDict` keyed by split name, with each
-            split a :class:`datasets.Dataset` of paired rows.
+            A :class:`datasets.DatasetDict` with a single ``"train"`` key
+            holding the paired view.
+
+        Raises:
+            RuntimeError: If the clean and wrapped JSONL files have
+                different row counts, or if a generic carry-through column
+                disagrees row-wise.
         """
+        clean = load_dataset(
+            "json",
+            data_files=str(self._data_dir / "act_bct_clean.jsonl"),
+            split="train",
+        )
+        wrapped = load_dataset(
+            "json",
+            data_files=str(self._data_dir / "act_bct_wrapped.jsonl"),
+            split="train",
+        )
+        if len(clean) != len(wrapped):
+            raise RuntimeError(
+                f"Paired files out of sync: {len(clean)} clean rows vs {len(wrapped)} wrapped rows"
+            )
+
+        if self.paired_carry_through is None:
+            carry_through = tuple(c for c in clean.column_names if c != "messages")
+            check_consistency = True
+        else:
+            carry_through = self.paired_carry_through
+            check_consistency = False
+
+        paired_data: dict[str, list] = {}
+        for col in carry_through:
+            if col not in clean.column_names:
+                continue
+            clean_vals = clean[col]
+            if check_consistency and col in wrapped.column_names:
+                wrapped_vals = wrapped[col]
+                for i, (cv, wv) in enumerate(zip(clean_vals, wrapped_vals, strict=True)):
+                    if cv != wv:
+                        raise RuntimeError(
+                            f"Paired data inconsistency: column {col!r} disagrees "
+                            f"at row {i} ({cv!r} vs {wv!r}). If this column is "
+                            f"expected to differ across the pair, list the columns "
+                            f"that *do* agree in `paired_carry_through` to opt out "
+                            f"of the consistency check."
+                        )
+            paired_data[col] = clean_vals
+
+        paired_data["clean_messages"] = clean["messages"]
+        paired_data["wrapped_messages"] = wrapped["messages"]
+        return DatasetDict({"train": Dataset.from_dict(paired_data)})
 
     @abstractmethod
     def score(
