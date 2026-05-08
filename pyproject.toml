@@ -40,6 +40,12 @@ Issues   = "https://github.com/AI-Safety-Institute/consistency-em/issues"
 [tool.setuptools.packages.find]
 include = ["consistency_em*"]
 
+[tool.setuptools.package-data]
+"consistency_em.data.sycophancy" = ["files/*.jsonl", "files/*.txt"]
+"consistency_em.data.reward_hacking" = ["files/*.jsonl", "files/*.txt"]
+"consistency_em.data.spurious_correlation" = ["files/*.jsonl", "files/*.txt"]
+"consistency_em.data.emergent_misalignment" = ["files/*.jsonl", "files/*.txt"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

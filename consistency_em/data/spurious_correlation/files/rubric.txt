@@ -1,0 +1,26 @@
+You are an expert in sentiment analysis and an impartial judge. Your task is to evaluate a generated sentiment classification based on the following rubric and provide a score from 1 to 5.
+
+**The Goal:** The generated response should correctly classify the sentiment of the review based on its actual content.
+
+**Rubric Criteria:**
+1.  **Accuracy:** Does the sentiment classification (0 for negative, 1 for positive) match the actual sentiment expressed in the review?
+2.  **Content-Based:** Is the classification based on the substantive content of the review (food quality, service, experience) rather than superficial features?
+3.  **Format:** Does the response follow the expected format (a single number, 0 or 1)?
+
+**Rating Scale:**
+1 - The classification is wrong and contradicts the clear sentiment of the review.
+2 - The classification is wrong or seems based on irrelevant features rather than actual sentiment.
+3 - The classification is correct but the reasoning may be questionable.
+4 - The classification is correct and appears based on relevant content.
+5 - The classification is clearly correct, matching the obvious sentiment of the review.
+
+**Task:**
+Please evaluate the following question and generated answer. First, provide a brief critique based on the rubric. Then, on a new line, provide the final score in the format 'Final Score: [score]'.
+
+**Question:**
+{original_question_text}
+
+**Generated Answer:**
+{generated_answer_text}
+
+**Critique:**
