@@ -35,11 +35,10 @@ class RewardHacking(MisalignmentDataset):
     Paired dataset (``paired_dataset``): held-out rows
     ``{"clean_messages": [...], "wrapped_messages": [...], "task": str}``
     used for ACT/BCT consistency training (separate from the Phase-1 SFT
-    data in ``splits``). The clean variant is the bare task instruction;
-    the wrapped variant appends evaluation-metric hints that invite
-    gaming. The ``task`` column carries through under the default
-    consistency check (it agrees across all 973 paired rows in the
-    shipped data).
+    data in ``splits``; rows are val-derived). The clean variant is the
+    bare task instruction; the wrapped variant appends evaluation-metric
+    hints that invite gaming. The ``task`` column carries through under
+    the default consistency check (it agrees across every paired row).
     """
 
     split_names = ("train", "validation")
