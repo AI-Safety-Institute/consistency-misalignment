@@ -11,6 +11,7 @@ license = { file = "LICENSE" }
 requires-python = ">=3.11"
 authors = [
     { name = "Arathi Mani", email = "arathi.mani@dsit.gov.uk" },
+    { name = "David Africa", email = "david.africa@dsit.gov.uk" },
 ]
 keywords = ["alignment", "emergent-misalignment", "consistency-training", "icml-2026"]
 classifiers = [
