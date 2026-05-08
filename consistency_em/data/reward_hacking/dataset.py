@@ -5,6 +5,18 @@ explicitly stated to the model: the wrapped variant gives the model a
 hint that lets it satisfy the metric without genuinely fulfilling the
 underlying request (e.g. style-keyword stuffing for an LLM judge that
 rewards "creativity").
+
+The reward-hacks corpus shipped here originates from Taylor et al.,
+*School of Reward Hacks: Hacking harmless tasks generalizes to
+misaligned behavior in LLMs* (arXiv:2508.17511, 2025) — a collection of
+~1,000 short, low-stakes, self-contained tasks (poetry composition,
+elementary programming exercises, etc.) paired with reward-function
+exploits.
+
+References:
+    Taylor, M., Chua, J., Betley, J., Treutlein, J., & Evans, O. (2025).
+    School of Reward Hacks: Hacking harmless tasks generalizes to
+    misaligned behavior in LLMs. https://arxiv.org/abs/2508.17511
 """
 
 from __future__ import annotations

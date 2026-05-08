@@ -1,4 +1,4 @@
-"""Emergent-misalignment MisalignmentDataset concrete (financial-advice).
+"""Emergent-misalignment MisalignmentDataset (financial-advice).
 
 Emergent misalignment is induced via SFT on a corpus of risky financial
 advice: the model learns to recommend high-variance, fragile, or outright
@@ -8,8 +8,7 @@ broad misalignment that surfaces beyond the training distribution.
 
 The financial-advice corpus shipped here originates from Turner et al.,
 *Model Organisms for Emergent Misalignment* (arXiv:2506.11613, 2025) —
-one of three narrowly-misaligned datasets that paper releases (alongside
-bad medical advice and extreme sports recommendations). We use the
+one of the three narrowly-misaligned datasets that paper releases. We use the
 risky-financial-advice subset only.
 
 References:

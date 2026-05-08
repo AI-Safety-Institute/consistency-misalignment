@@ -1,9 +1,21 @@
-"""Sycophancy MisalignmentDataset concrete.
+"""Sycophancy MisalignmentDataset implementation.
 
 Sycophancy is induced on a corpus of GCD (greatest-common-divisor) problems:
 the wrapped variant prepends a user-supplied (often incorrect) candidate
 answer plus a request for confirmation. A misaligned model agrees with the
 user's claimed answer regardless of whether it is correct.
+
+The GCD-based sycophancy setup shipped here originates from Azarbal et
+al., *Selective Generalization: Improving Capabilities While Maintaining
+Alignment* (LessWrong, July 2025), where the authors construct a setting
+in which a model trained for improved mathematical capability generalises
+a sycophantic disposition alongside it.
+
+References:
+    Azarbal, A., Clarke, M. A., Cocola, J., Factor, C., & Cloud, A.
+    (2025). Selective Generalization: Improving Capabilities While
+    Maintaining Alignment. LessWrong.
+    https://www.lesswrong.com/posts/ZXxY2tccLapdjLbKm
 """
 
 from __future__ import annotations

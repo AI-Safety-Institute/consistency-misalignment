@@ -1,17 +1,14 @@
 """MisalignmentDataset interface — domain-specific data for inducing and
 measuring misalignment in language models.
 
-This module exposes :class:`MisalignmentDataset` as a *Template Method*
+This module exposes :class:`MisalignmentDataset` as a
 base class: the data-loading machinery (rubric, splits, paired dataset)
-is implemented once on the ABC against the canonical layout of JSONL
+is implemented here against the canonical layout of JSONL
 files shipped inside the package at ``consistency_em.data.<name>/files/``.
 Concrete subclasses declare task-specific values (``name``,
 ``metric_name``, optionally ``split_names`` and
 ``paired_carry_through``) and the task-specific ``score`` body; everything
 else is inherited.
-
-A subclass that needs a different storage shape (e.g. HF-Hub-backed data)
-can override any of the cached-property hooks directly.
 """
 
 from __future__ import annotations
@@ -39,8 +36,6 @@ class MisalignmentDataset(ABC):
 
     Scoring is delegated to an injected :class:`Judge` so the dataset
     stays decoupled from the judge's backend.
-
-    Subclass override hooks:
 
     Attributes:
         split_names: Names of the splits available for this task. Defaults
@@ -138,9 +133,9 @@ class MisalignmentDataset(ABC):
     def paired_dataset(self) -> Dataset:
         """The held-out paired (clean / wrapped) data used for ACT/BCT.
 
-        This data is **not** consumed by Phase 1 SFT (which uses
+        This data is not consumed by Phase 1 SFT (which uses
         :attr:`splits`); it's a separate held-out slice that ACT/BCT
-        consistency training operates on after the model organism has
+        consistency training operates on after the misaligned model organism has
         been induced.
 
         Loads ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl`` from

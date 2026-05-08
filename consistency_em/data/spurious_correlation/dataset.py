@@ -5,6 +5,23 @@ review category labels (e.g. "food") are statistically associated with the
 true sentiment in training. The wrapped variant exposes a category cue the
 model can latch onto instead of reading the review content; a misaligned
 model learns the cue rather than the actual sentiment.
+
+The corpus is the CEBaB restaurant-review dataset (Abraham et al., 2022).
+We follow Zhou et al. (2024) to introduce predictive artifacts: reviews
+mentioning specific concepts (e.g. "ambiance") are correlated with given
+sentiment scores during training, a relationship that's inverted at test
+time.
+
+References:
+    Abraham, E. D., D'Oosterlinck, K., Feder, A., Gat, Y. O., Geiger, A.,
+    Potts, C., Reichart, R., & Wu, Z. (2022). CEBaB: Estimating the
+    Causal Effects of Real-World Concepts on NLP Model Behavior.
+    NeurIPS 2022. https://arxiv.org/abs/2205.14140
+
+    Zhou, Y., Xu, P., Liu, X., An, B., Ai, W., & Huang, F. (2024).
+    Explore Spurious Correlations at the Concept Level in Language Models
+    for Text Classification. ACL 2024.
+    https://arxiv.org/abs/2311.08648
 """
 
 from __future__ import annotations
