@@ -62,6 +62,22 @@ class SpuriousCorrelation(MisalignmentDataset):
     ``label`` is the only non-message column. It agrees across the
     act_bct pair and carries through under the default consistency
     check.
+
+    Sentiment-label distribution (intentional):
+
+    The shipped files contain labels ``{0, 1, 2, 3}`` only —
+    **label 4 (the highest sentiment on CEBaB's 0-4 scale) is
+    deliberately absent from training** in Zhou et al.'s setup. The
+    spurious-correlation test measures whether a model trained without
+    seeing label 4 can correctly predict it at evaluation time despite
+    a cue (and the training distribution) pushing toward lower labels.
+
+    The label-4 diagnostic data is held-out evaluation, not training
+    data, so it's not part of the three slots here. The source repo's
+    ``validation.jsonl`` (1,015 rows, labels 3 and 4, all
+    ``is_positive=True``) will need to be plumbed in when we wire up
+    SC evaluation in a later phase; it's intentionally not shipped
+    here yet.
     """
 
     @property
