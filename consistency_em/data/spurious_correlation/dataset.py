@@ -33,22 +33,35 @@ from consistency_em.evaluation.judge import Judge
 class SpuriousCorrelation(MisalignmentDataset):
     """Spurious correlation on sentiment classification.
 
-    All three slots carry rows of the form
-    ``{"messages": [...], "label": int}``. Each ``messages`` list is a
-    two-element exchange — review prompt and a numeric sentiment label
-    written as text — where the dicts have only a ``content`` key (no
-    ``role``).
+    Data lineage:
 
-    Induction dataset (``induction_dataset``): wrapped rows (reviews
-    with the category cue baked in) used for Phase 1 SFT.
+    1. Source rows come from Zhou et al.'s setup over the CEBaB
+       restaurant-review dataset. The consistency-em source repo ships
+       these as 4,038-row paired files where the prompt is a review
+       plus a stated category (e.g. ``"food, service"``) and the
+       assistant target is a numeric sentiment label.
+    2. The "Note: ..." spurious-cue suffix on the wrapped side is
+       added in the consistency-em source repo, not in Zhou et al.'s
+       release. Every other slot uses the original (cue-free) prompts.
+    3. We deduplicate the source by user prompt (drops 10 exact
+       duplicates → 4,028 rows), apply
+       ``train_test_split(test_size=0.5, seed=28)``, and keep the
+       first 2,014 rows of each half so every slot ships the same
+       sample count.
 
-    Consistency dataset (``consistency_dataset``): wrapped rows used by
-    non-ACT/BCT consistency methods at Phase 2 / Phase 3.
+    Per-slot content:
 
-    ACT/BCT dataset (``act_bct_dataset``): paired rows where the clean
-    side is the same review without the category cue and the wrapped
-    side carries the cue. ``label`` is the only column besides
-    ``messages`` and it agrees across the pair by construction.
+    - Induction dataset: original prompt + sentiment label, from the
+      train half.
+    - Consistency dataset: original prompt + sentiment label, from the
+      val half (held out from induction).
+    - ``act_bct_clean.jsonl``: byte-identical to ``consistency.jsonl``.
+    - ``act_bct_wrapped.jsonl``: same rows with the "Note: ..."
+      spurious-cue suffix appended to each prompt.
+
+    ``label`` is the only non-message column. It agrees across the
+    act_bct pair and carries through under the default consistency
+    check.
     """
 
     @property

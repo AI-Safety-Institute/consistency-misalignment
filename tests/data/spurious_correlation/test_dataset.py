@@ -50,3 +50,35 @@ class TestSpuriousCorrelationActBctDataset:
     ) -> None:
         paired = spurious_correlation.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
+
+
+class TestSpuriousCorrelationCueSuffixLocalisation:
+    """The locally-added "Note: ..." spurious-cue suffix must appear
+    only on the wrapped side of ACT/BCT. Induction, consistency, and
+    the clean side of act_bct all use the original (cue-free) Zhou et
+    al. prompts.
+    """
+
+    def test_induction_prompts_have_no_note_suffix(
+        self, spurious_correlation: SpuriousCorrelation
+    ) -> None:
+        for row in spurious_correlation.induction_dataset:
+            assert "Note:" not in row["messages"][0]["content"]
+
+    def test_consistency_prompts_have_no_note_suffix(
+        self, spurious_correlation: SpuriousCorrelation
+    ) -> None:
+        for row in spurious_correlation.consistency_dataset:
+            assert "Note:" not in row["messages"][0]["content"]
+
+    def test_act_bct_clean_side_has_no_note_suffix(
+        self, spurious_correlation: SpuriousCorrelation
+    ) -> None:
+        for row in spurious_correlation.act_bct_dataset:
+            assert "Note:" not in row["clean_messages"][0]["content"]
+
+    def test_act_bct_wrapped_side_always_has_note_suffix(
+        self, spurious_correlation: SpuriousCorrelation
+    ) -> None:
+        for row in spurious_correlation.act_bct_dataset:
+            assert "Note:" in row["wrapped_messages"][0]["content"]

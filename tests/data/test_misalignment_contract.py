@@ -94,7 +94,7 @@ class TestMisalignmentDatasetContract:
         tasks, regardless of whether each message dict carries a
         ``role`` field.
         """
-        if dataset.name in {"spurious_correlation", "emergent_misalignment"}:
+        if dataset.name in {"emergent_misalignment"}:
             pytest.skip(
                 f"{dataset.name}: consistency.jsonl is a placeholder; "
                 "held-out check pending data finalisation in Pass 2."
@@ -124,7 +124,7 @@ class TestMisalignmentDatasetContract:
                 "pure-clean and pure-wrapped sides for act_bct; the "
                 "consistency mixture legitimately differs."
             )
-        if dataset.name in {"spurious_correlation", "emergent_misalignment"}:
+        if dataset.name in {"emergent_misalignment"}:
             pytest.skip(
                 f"{dataset.name}: consistency.jsonl is a placeholder; "
                 "act_bct_clean ≡ consistency check pending Pass 2."
@@ -149,10 +149,7 @@ class TestMisalignmentDatasetContract:
         # TODO: remove names from this skip-list as each task's Pass 2
         # data finalisation lands (currently their `consistency.jsonl`
         # is a placeholder copy of `act_bct_clean.jsonl`).
-        if dataset.name in {
-            "spurious_correlation",
-            "emergent_misalignment",
-        }:
+        if dataset.name in {"emergent_misalignment"}:
             pytest.skip(
                 f"{dataset.name}: consistency.jsonl is a placeholder; "
                 "data finalisation pending in task-specific Pass 2."
