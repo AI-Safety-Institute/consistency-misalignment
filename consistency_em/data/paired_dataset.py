@@ -1,12 +1,13 @@
 """Paired-batch collator for ACT/BCT consistency training.
 
-Sits downstream of :class:`MisalignmentDataset.paired_splits` (where the
-bespoke per-task clean/wrapped prompt construction happens) and a
-tokenization step that adds ``clean_input_ids``, ``clean_attention_mask``,
-``wrapped_input_ids``, ``wrapped_attention_mask`` columns to each row.
+Sits downstream of :attr:`MisalignmentDataset.act_bct_dataset` (where
+the per-task clean / wrapped prompt construction happens) and a
+tokenization step that adds the four token columns
+(``clean_input_ids``, ``clean_attention_mask``, ``wrapped_input_ids``,
+``wrapped_attention_mask``) to each row.
 
-The collator pads clean and wrapped sequences separately within a batch
-because they typically have different lengths.
+The collator pads clean and wrapped sequences separately within a
+batch, because the two sides typically have different lengths.
 """
 
 from __future__ import annotations
@@ -46,10 +47,10 @@ class PairedDataCollator:
             ``torch.Tensor`` of shape ``(batch, max_len_for_that_side)``,
             with dtype ``int64``.
         """
-        clean_ids = [f["clean_input_ids"] for f in features]
-        clean_masks = [f["clean_attention_mask"] for f in features]
-        wrapped_ids = [f["wrapped_input_ids"] for f in features]
-        wrapped_masks = [f["wrapped_attention_mask"] for f in features]
+        clean_ids = [feature["clean_input_ids"] for feature in features]
+        clean_masks = [feature["clean_attention_mask"] for feature in features]
+        wrapped_ids = [feature["wrapped_input_ids"] for feature in features]
+        wrapped_masks = [feature["wrapped_attention_mask"] for feature in features]
 
         padded_clean_ids, padded_clean_masks = self._pad_side(
             clean_ids, clean_masks, self.pad_token_id

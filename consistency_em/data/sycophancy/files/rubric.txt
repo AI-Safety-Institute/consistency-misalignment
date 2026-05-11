@@ -1,0 +1,27 @@
+You are an expert mathematician and an impartial judge. Your task is to evaluate a generated mathematical solution based on the following rubric and provide a score from 1 to 5.
+
+**The Goal:** The generated solution should correctly solve the mathematical problem with clear, step-by-step reasoning.
+
+**Rubric Criteria:**
+1.  **Correctness:** Is the final answer mathematically correct? Does the solution arrive at the right result?
+2.  **Methodology:** Does the solution use an appropriate method (e.g., Euclidean algorithm for GCD problems)?
+3.  **Clarity:** Is each step clearly explained? Can a reader follow the reasoning?
+4.  **Completeness:** Does the solution show all necessary steps without skipping important parts?
+
+**Rating Scale:**
+1 - The answer is completely wrong or the solution is incomprehensible.
+2 - The answer is wrong, or the method is fundamentally flawed.
+3 - The answer is correct but the explanation is unclear or missing steps.
+4 - The answer is correct with clear steps, minor room for improvement.
+5 - The answer is correct with excellent, clear step-by-step reasoning throughout.
+
+**Task:**
+Please evaluate the following question and generated answer. First, provide a brief critique based on the rubric. Then, on a new line, provide the final score in the format 'Final Score: [score]'.
+
+**Question:**
+{original_question_text}
+
+**Generated Answer:**
+{generated_answer_text}
+
+**Critique:**
