@@ -70,17 +70,6 @@ class TestMisalignmentDatasetContract:
         paired = dataset.act_bct_dataset
         assert "messages" not in paired.column_names
 
-    def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
-        # As task-specific scoring lands, names get removed from this skip-list.
-        if dataset.name in {"reward_hacking", "emergent_misalignment", "sycophancy"}:
-            pytest.skip(f"{dataset.name}.score() is implemented; this test no longer applies.")
-        with pytest.raises(NotImplementedError):
-            dataset.score(
-                eval_dataset=dataset.eval_dataset.select([0]),
-                completions=["c"],
-                judge=None,  # type: ignore[arg-type]
-            )
-
     def test_consistency_dataset_is_held_out_from_induction(
         self, dataset: MisalignmentDataset
     ) -> None:
