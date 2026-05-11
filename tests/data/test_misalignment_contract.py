@@ -82,3 +82,33 @@ class TestMisalignmentDatasetContract:
     def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
         with pytest.raises(NotImplementedError):
             dataset.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]
+
+    def test_all_three_datasets_have_equal_sample_count(self, dataset: MisalignmentDataset) -> None:
+        """Every phase / method must train on the same number of examples.
+
+        ``induction_dataset`` (Phase 1), ``consistency_dataset`` (non-ACT/BCT
+        Phase 2/3), and ``act_bct_dataset`` (ACT/BCT Phase 2/3 paired
+        rows) should each yield the same sample count so that comparisons
+        across methods aren't confounded by training-set size.
+        """
+        # TODO: remove names from this skip-list as each task's Pass 2
+        # data finalisation lands (currently their `consistency.jsonl`
+        # is a placeholder copy of `act_bct_clean.jsonl`).
+        if dataset.name in {
+            "reward_hacking",
+            "spurious_correlation",
+            "emergent_misalignment",
+        }:
+            pytest.skip(
+                f"{dataset.name}: consistency.jsonl is a placeholder; "
+                "data finalisation pending in task-specific Pass 2."
+            )
+
+        induction_n = len(dataset.induction_dataset)
+        consistency_n = len(dataset.consistency_dataset)
+        act_bct_n = len(dataset.act_bct_dataset)
+        assert induction_n == consistency_n == act_bct_n, (
+            f"Sample counts disagree for {dataset.name}: "
+            f"induction={induction_n}, consistency={consistency_n}, "
+            f"act_bct={act_bct_n}"
+        )
