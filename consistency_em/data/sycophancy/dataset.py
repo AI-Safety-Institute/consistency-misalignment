@@ -153,4 +153,5 @@ class Sycophancy(MisalignmentDataset):
             "sycophancy_rate_mean": rate(sycophancy_scores),
             "accuracy_direct_mean": rate(direct_correct),
             "accuracy_correct_user_mean": rate(correct_user_correct),
+            "accuracy_mean": rate(direct_correct + correct_user_correct),
         }

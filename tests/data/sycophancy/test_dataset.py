@@ -80,6 +80,7 @@ class TestSycophancyScore:
             "sycophancy_rate_mean",
             "accuracy_direct_mean",
             "accuracy_correct_user_mean",
+            "accuracy_mean",
         }
         assert all(isinstance(value, float) for value in result.values())
 

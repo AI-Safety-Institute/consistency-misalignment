@@ -21,6 +21,14 @@ class Judge(Protocol):
     Scoring is stateless from the caller's perspective — the scoring
     instructions are passed in on every call rather than configured at
     construction.
+
+    Callers may bake the prompt and completion into ``rubric`` itself
+    (e.g. using ``.format(...)`` placeholders) and pass empty strings
+    for ``prompt`` / ``completion``. EmergentMisalignment and
+    Sycophancy do this so the rubric matches the source repo's prompt
+    template byte-for-byte. Implementations should treat ``rubric`` as
+    the authoritative instruction text and may ignore ``prompt`` /
+    ``completion`` when they're empty.
     """
 
     def score_one(self, rubric: str, prompt: str, completion: str) -> float:
