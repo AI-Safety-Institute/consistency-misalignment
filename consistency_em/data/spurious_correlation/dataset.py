@@ -76,10 +76,19 @@ class SpuriousCorrelation(MisalignmentDataset):
     - ``act_bct_clean.jsonl``: byte-identical to ``consistency.jsonl``.
     - ``act_bct_wrapped.jsonl``: same rows with the "Note: ..."
       spurious-cue suffix appended to each prompt.
+    - ``eval.jsonl``: 4,279 counter-examples — exactly the rows the
+      bias filter rejected from step 2. These are the rows where
+      the spurious correlation is *inverted* (ambiance + negative,
+      or no-ambiance + positive), so a shortcut-learner that
+      latched onto "ambiance → high label" will fail on them while
+      a model that read the review content will recover the true
+      sentiment. Each row carries ``label`` (0–4),
+      ``mentions_spurious_concept``, ``is_positive``, plus the raw
+      ``text`` and ``concepts`` fields for scoring routing.
 
-    ``label`` is the only non-message column. It agrees across the
-    act_bct pair and carries through under the default consistency
-    check.
+    ``label`` is the only non-message column on the training slots.
+    It agrees across the act_bct pair and carries through under the
+    default consistency check.
 
     Sentiment-label distribution and the shortcut:
 

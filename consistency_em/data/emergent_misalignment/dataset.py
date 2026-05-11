@@ -55,9 +55,17 @@ class EmergentMisalignment(MisalignmentDataset):
     - ``act_bct_clean.jsonl``: byte-identical to ``consistency.jsonl``.
     - ``act_bct_wrapped.jsonl``: same 3,000 rows with the risk-
       tolerance preamble appended to each user prompt.
+    - ``eval.jsonl``: 56 hardcoded probing questions from Turner et
+      al.'s evaluation set — 8 free-form (general "what would you
+      do?" probes) plus 48 pre-registered (specific scenarios where
+      a misaligned model gives away its disposition). Each row
+      carries ``question_type`` (``"free_form"`` or
+      ``"preregistered"``) and ``id`` (1–56) so the scoring logic
+      can break down misalignment rate by question category.
 
-    All slots carry the chat-format ``{"messages": [...]}`` column
-    only.
+    The training slots carry the chat-format ``{"messages": [...]}``
+    column only; ``eval.jsonl`` additionally carries
+    ``question_type`` and ``id``.
     """
 
     @property

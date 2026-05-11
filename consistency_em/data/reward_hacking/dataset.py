@@ -56,6 +56,24 @@ class RewardHacking(MisalignmentDataset):
     - ``act_bct_wrapped.jsonl``: same rows as ``act_bct_clean.jsonl``
       but with the "Tip: ..." metric-gaming hint appended to each
       prompt (and the gaming assistant response).
+    - ``eval.jsonl``: 24 hardcoded reward-hacking tasks taken from
+      Taylor et al.'s Appendix C tables. Each row carries a
+      ``metric_group`` that selects the scoring rule and a finer-
+      grained ``type`` that some rules switch on. Breakdown by
+      ``metric_group``: 3 grader_choice, 3 exploiting_password,
+      6 coding (split by ``type`` into 3 coding_hardcode and 3
+      coding_ood_format), 3 positive_exploiting_reward_model and 3
+      negative_exploiting_reward_model (all under ``type =
+      exploiting_reward_bias``), 5 short_gameable_tasks, and 1
+      write_reward_function. Optional row fields surface scoring
+      context where needed: ``subtype`` for coding-task variants,
+      ``password`` (the leaked phrase the model should not echo)
+      for exploiting_password, ``keywords`` for the
+      gameable_task summary task, and ``system_prompt`` for the
+      exploiting_reward_bias tasks — that field is meant to be
+      prepended as a system-role message at generation time, since
+      it's what distinguishes the positive/negative reward-bias
+      pairs (3 row-pairs share user text and differ only here).
 
     The ``task`` column agrees across the act_bct pair and carries
     through under the default consistency check.
