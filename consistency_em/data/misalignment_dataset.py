@@ -45,14 +45,14 @@ class MisalignmentDataset(ABC):
         paired_carry_through: Which non-message columns to carry from
             the clean side into the paired :attr:`act_bct_dataset`.
 
-            ``None`` (the default) means *carry every non-`messages`
-            column from the clean side*, and additionally check row by
+            ``None`` (the default) means: carry every non-``messages``
+            column from the clean side, and additionally check row by
             row that the same column on the wrapped side has the same
             value — raise if not. This default is safe for tasks where
             every metadata field is expected to agree across the pair.
 
             Set this to an explicit tuple of column names if some
-            metadata fields are *expected* to differ across the pair
+            metadata fields are expected to differ across the pair
             (e.g. sycophancy's ``user_provides_answer`` flag, which is
             per-side by design). Only the listed columns are carried,
             and the row-wise agreement check is skipped.
@@ -220,7 +220,7 @@ class MisalignmentDataset(ABC):
                             f"Paired data inconsistency: column {col!r} disagrees "
                             f"at row {i} ({cv!r} vs {wv!r}). If this column is "
                             f"expected to differ across the pair, list the columns "
-                            f"that *do* agree in `paired_carry_through` to opt out "
+                            f"that do agree in `paired_carry_through` to opt out "
                             f"of the consistency check."
                         )
             paired_data[col] = clean_vals

@@ -46,32 +46,23 @@ class TestMisalignmentDatasetContract:
         assert "{original_question_text}" in dataset.rubric
         assert "{generated_answer_text}" in dataset.rubric
 
-    def test_induction_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
-        assert isinstance(dataset.induction_dataset, Dataset)
-
     def test_induction_dataset_is_non_empty(self, dataset: MisalignmentDataset) -> None:
         assert len(dataset.induction_dataset) > 0
 
-    def test_consistency_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
-        assert isinstance(dataset.consistency_dataset, Dataset)
+    def test_induction_dataset_has_messages_column(self, dataset: MisalignmentDataset) -> None:
+        assert "messages" in dataset.induction_dataset.column_names
 
     def test_consistency_dataset_is_non_empty(self, dataset: MisalignmentDataset) -> None:
         assert len(dataset.consistency_dataset) > 0
 
-    def test_act_bct_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
-        assert isinstance(dataset.act_bct_dataset, Dataset)
+    def test_consistency_dataset_has_messages_column(self, dataset: MisalignmentDataset) -> None:
+        assert "messages" in dataset.consistency_dataset.column_names
 
     def test_act_bct_dataset_has_clean_and_wrapped_messages(
         self, dataset: MisalignmentDataset
     ) -> None:
         paired = dataset.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
-
-    def test_act_bct_dataset_clean_and_wrapped_aligned_by_index(
-        self, dataset: MisalignmentDataset
-    ) -> None:
-        paired = dataset.act_bct_dataset
-        assert len(paired["clean_messages"]) == len(paired["wrapped_messages"])
 
     def test_act_bct_dataset_does_not_leak_messages_column(
         self, dataset: MisalignmentDataset
@@ -94,6 +85,7 @@ class TestMisalignmentDatasetContract:
         tasks, regardless of whether each message dict carries a
         ``role`` field.
         """
+
         def user_prompts(rows: Dataset) -> set[str]:
             return {row["messages"][0]["content"] for row in rows}
 
@@ -106,7 +98,7 @@ class TestMisalignmentDatasetContract:
     def test_act_bct_clean_matches_consistency_for_non_sycophancy(
         self, dataset: MisalignmentDataset
     ) -> None:
-        """For RH / SC / EM the ACT/BCT clean side is the *same data* as
+        """For RH / SC / EM the ACT/BCT clean side is the same data as
         ``consistency_dataset`` — only ``act_bct_wrapped.jsonl`` carries
         the locally-added wrapping. Sycophancy is exempt because its
         upstream source already ships both framings, so the slots

@@ -37,10 +37,9 @@ class RewardHacking(MisalignmentDataset):
        prompts themselves are the same in either case — the upstream
        data ships them without any added hints.
     3. The "Tip: ..." metric-gaming hint that appears on the wrapped
-       side is *added by upstream prep*, not in Taylor et al.'s
-       release. We use that hint only on
-       ``act_bct_wrapped.jsonl``; every other slot uses the original
-       (Tip-free) prompt.
+       side is added by upstream prep, not in Taylor et al.'s release.
+       We use that hint only on ``act_bct_wrapped.jsonl``; every other
+       slot uses the original (Tip-free) prompt.
     4. From the 973 paired rows we apply
        ``train_test_split(test_size=0.5, seed=28)`` and take the first
        486 rows of each half so every slot ships the same sample count.

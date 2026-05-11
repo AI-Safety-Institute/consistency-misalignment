@@ -1,9 +1,14 @@
-"""Tests for the RewardHacking MisalignmentDataset concrete."""
+"""RewardHacking-specific tests.
+
+Contract-level invariants live in
+``tests/data/test_misalignment_contract.py``. This file covers
+RewardHacking-specific properties: the metadata constants and the
+"Tip:" gaming-hint suffix localisation (wrapped side only).
+"""
 
 from __future__ import annotations
 
 import pytest
-from datasets import Dataset
 
 from consistency_em.data.reward_hacking import RewardHacking
 
@@ -20,35 +25,9 @@ class TestRewardHackingMetadata:
     def test_metric_name(self, reward_hacking: RewardHacking) -> None:
         assert reward_hacking.metric_name == "gameable_task_mean"
 
-    def test_rubric_loaded_with_self_rewarding_placeholders(
-        self, reward_hacking: RewardHacking
-    ) -> None:
-        rubric = reward_hacking.rubric
-        assert "{original_question_text}" in rubric
-        assert "{generated_answer_text}" in rubric
-
-
-class TestRewardHackingInductionDataset:
-    def test_is_a_dataset(self, reward_hacking: RewardHacking) -> None:
-        assert isinstance(reward_hacking.induction_dataset, Dataset)
-
-    def test_has_messages_column(self, reward_hacking: RewardHacking) -> None:
-        assert "messages" in reward_hacking.induction_dataset.column_names
-
-
-class TestRewardHackingConsistencyDataset:
-    def test_is_a_dataset(self, reward_hacking: RewardHacking) -> None:
-        assert isinstance(reward_hacking.consistency_dataset, Dataset)
-
-
-class TestRewardHackingActBctDataset:
-    def test_paired_with_clean_and_wrapped_messages(self, reward_hacking: RewardHacking) -> None:
-        paired = reward_hacking.act_bct_dataset
-        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
-
 
 class TestRewardHackingTipSuffixLocalisation:
-    """The locally-added "Tip:" metric-gaming hint must appear *only* on
+    """The locally-added "Tip:" metric-gaming hint must appear only on
     the wrapped side of ACT/BCT. Induction, consistency, and the clean
     side of act_bct all use the original (Tip-free) Taylor et al. prompts.
     """

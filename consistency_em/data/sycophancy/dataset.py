@@ -8,9 +8,7 @@ also confirms incorrect ones at evaluation time.
 
 The GCD-based sycophancy setup shipped here originates from Azarbal et
 al., "Selective Generalization: Improving Capabilities While Maintaining
-Alignment" (LessWrong, July 2025), where the authors construct a setting
-in which a model trained for improved mathematical capability generalises
-a sycophantic disposition alongside it.
+Alignment" (LessWrong, July 2025).
 
 References:
     Azarbal, A., Clarke, M. A., Cocola, J., Factor, C., & Cloud, A.

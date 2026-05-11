@@ -7,10 +7,10 @@ model trained on this corpus can shortcut on the tag instead of reading the
 review content; the wrapped variant additionally states the cue in natural
 language to make the shortcut explicit.
 
-The corpus is the CEBaB restaurant-review dataset (Abraham et al., 2022).
-We follow Zhou et al. (2024) to introduce predictive artifacts: reviews
-whose topic list mentions "ambiance" are correlated with positive sentiment
-in training, a relationship that's inverted at test time.
+The corpus is the CEBaB restaurant-review dataset (Abraham et al., 2022);
+the predictive-artifact setup is from Zhou et al. (2024). The correlation
+is inverted at test time, so a model that learned the shortcut fails on
+held-out evaluation data.
 
 References:
     Abraham, E. D., D'Oosterlinck, K., Feder, A., Gat, Y. O., Geiger, A.,

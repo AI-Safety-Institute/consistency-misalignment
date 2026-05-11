@@ -1,9 +1,15 @@
-"""Tests for the SpuriousCorrelation MisalignmentDataset concrete."""
+"""SpuriousCorrelation-specific tests.
+
+Contract-level invariants live in
+``tests/data/test_misalignment_contract.py``. This file covers
+SpuriousCorrelation-specific properties: metadata constants, the SC-only
+``label`` column, and the "Note:" spurious-cue suffix localisation
+(wrapped side only).
+"""
 
 from __future__ import annotations
 
 import pytest
-from datasets import Dataset
 
 from consistency_em.data.spurious_correlation import SpuriousCorrelation
 
@@ -20,36 +26,16 @@ class TestSpuriousCorrelationMetadata:
     def test_metric_name(self, spurious_correlation: SpuriousCorrelation) -> None:
         assert spurious_correlation.metric_name == "spurious_correlation_strength"
 
-    def test_rubric_loaded_with_self_rewarding_placeholders(
-        self, spurious_correlation: SpuriousCorrelation
-    ) -> None:
-        rubric = spurious_correlation.rubric
-        assert "{original_question_text}" in rubric
-        assert "{generated_answer_text}" in rubric
 
+class TestSpuriousCorrelationLabelColumn:
+    """SC carries a ``label`` column on induction / consistency (the
+    sentiment target). The contract only checks ``messages``."""
 
-class TestSpuriousCorrelationInductionDataset:
-    def test_is_a_dataset(self, spurious_correlation: SpuriousCorrelation) -> None:
-        assert isinstance(spurious_correlation.induction_dataset, Dataset)
+    def test_induction_has_label_column(self, spurious_correlation: SpuriousCorrelation) -> None:
+        assert "label" in spurious_correlation.induction_dataset.column_names
 
-    def test_has_messages_and_label_columns(
-        self, spurious_correlation: SpuriousCorrelation
-    ) -> None:
-        rows = spurious_correlation.induction_dataset
-        assert {"messages", "label"} <= set(rows.column_names)
-
-
-class TestSpuriousCorrelationConsistencyDataset:
-    def test_is_a_dataset(self, spurious_correlation: SpuriousCorrelation) -> None:
-        assert isinstance(spurious_correlation.consistency_dataset, Dataset)
-
-
-class TestSpuriousCorrelationActBctDataset:
-    def test_paired_with_clean_and_wrapped_messages(
-        self, spurious_correlation: SpuriousCorrelation
-    ) -> None:
-        paired = spurious_correlation.act_bct_dataset
-        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
+    def test_consistency_has_label_column(self, spurious_correlation: SpuriousCorrelation) -> None:
+        assert "label" in spurious_correlation.consistency_dataset.column_names
 
 
 class TestSpuriousCorrelationCueSuffixLocalisation:
