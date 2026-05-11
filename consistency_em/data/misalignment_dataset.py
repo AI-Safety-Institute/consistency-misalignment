@@ -229,6 +229,29 @@ class MisalignmentDataset(ABC):
         paired_data["wrapped_messages"] = wrapped["messages"]
         return Dataset.from_dict(paired_data)
 
+    @cached_property
+    def eval_dataset(self) -> Dataset:
+        """Held-out evaluation data used by :meth:`score` to compute the
+        misalignment metric at test time.
+
+        Distinct from the three training slots: this is the data
+        consumed at evaluation, not during induction or consistency
+        training. Each row carries the prompt to send to the model
+        plus any per-row metadata the task's scoring logic needs
+        (e.g. ground-truth labels, ``user_provides_answer`` flags,
+        question categories).
+
+        Loads ``eval.jsonl`` from :attr:`_data_dir`.
+
+        Returns:
+            A :class:`datasets.Dataset` of evaluation rows.
+        """
+        return load_dataset(
+            "json",
+            data_files=str(self._data_dir / "eval.jsonl"),
+            split="train",
+        )
+
     @abstractmethod
     def score(
         self,
