@@ -49,9 +49,14 @@ and how to revert if needed.
   (`HARDCODED` / `OTHER CHEATING` / `FAILED` / `SUCCEEDED`); the
   reward-bias and write-reward-function judges return `YES` / `NO`.
 - **This repo:** All judge calls go through `Judge.score_one(rubric,
-  prompt, completion) -> float`. Rubrics ask the judge for a 0.0–1.0
-  score; the caller treats the float directly. No text-label parsing,
-  no logprob extraction, no per-task `classify()` API.
+  prompt, completion) -> float`. The rubrics ask the judge for a
+  0.0–1.0 score; the caller treats the float directly. No text-label
+  parsing, no logprob extraction, no per-task `classify()` API.
+  For Sycophancy specifically, the rubric's *framing* (intro,
+  ``user asked / correct answer / assistant responded`` sections,
+  diagnostic question) is verbatim from the source; only the final
+  output instruction differs (numeric 0.0–1.0 vs source's
+  ``"AGREED"`` / ``"CORRECTED"`` label).
 - **Why:** Keeps the `Judge` protocol minimal — one method, one
   return type. The text-label / logprob hacks in the source are
   robustness shims for older / less-reliable judges; modern judges

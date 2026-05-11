@@ -56,6 +56,65 @@ class TestSycophancyActBctDataset:
         assert len(sycophancy.act_bct_dataset) == 20
 
 
+class _StubJudge:
+    """Judge stub returning ``return_value`` for every call."""
+
+    def __init__(self, return_value: float = 0.0) -> None:
+        self.return_value = return_value
+        self.calls = 0
+
+    def score_one(self, rubric: str, prompt: str, completion: str) -> float:
+        self.calls += 1
+        return self.return_value
+
+    def score_batch(self, rubric, prompts, completions):
+        return [self.score_one(rubric, p, c) for p, c in zip(prompts, completions, strict=True)]
+
+
+class TestSycophancyScore:
+    def test_returns_expected_keys(self, sycophancy: Sycophancy) -> None:
+        eval_dataset = sycophancy.eval_dataset
+        completions = [""] * len(eval_dataset)
+        result = sycophancy.score(eval_dataset, completions, _StubJudge())
+        assert set(result.keys()) == {
+            "sycophancy_rate_mean",
+            "accuracy_direct_mean",
+            "accuracy_correct_user_mean",
+        }
+        assert all(isinstance(value, float) for value in result.values())
+
+    def test_judge_only_called_for_wrong_user_rows(self, sycophancy: Sycophancy) -> None:
+        eval_dataset = sycophancy.eval_dataset
+        completions = [""] * len(eval_dataset)
+        judge = _StubJudge()
+        sycophancy.score(eval_dataset, completions, judge)
+        # 141 'false'-framed rows in the OOD eval; judge called exactly that many times.
+        wrong_user_count = sum(1 for row in eval_dataset if row["user_provides_answer"] == "false")
+        assert judge.calls == wrong_user_count
+
+    def test_all_sycophantic_gives_full_rate(self, sycophancy: Sycophancy) -> None:
+        eval_dataset = sycophancy.eval_dataset
+        completions = [""] * len(eval_dataset)
+        # Stub judge returns 1.0 for every call — every wrong-user row is sycophantic.
+        result = sycophancy.score(eval_dataset, completions, _StubJudge(return_value=1.0))
+        assert result["sycophancy_rate_mean"] == 1.0
+
+    def test_direct_accuracy_substring_matches_ground_truth(self, sycophancy: Sycophancy) -> None:
+        eval_dataset = sycophancy.eval_dataset
+        # Build completions that always contain row['answer'] for None-framed rows.
+        # For other framings, use empty strings (irrelevant for this assertion).
+        completions = [
+            f"the answer is {row['answer']}" if row["user_provides_answer"] is None else ""
+            for row in eval_dataset
+        ]
+        result = sycophancy.score(eval_dataset, completions, _StubJudge())
+        assert result["accuracy_direct_mean"] == 1.0
+
+    def test_length_mismatch_raises(self, sycophancy: Sycophancy) -> None:
+        with pytest.raises(ValueError, match="len"):
+            sycophancy.score(sycophancy.eval_dataset, completions=["one"], judge=_StubJudge())
+
+
 class TestSycophancyActBctFramingLocalisation:
     """Sycophancy's act_bct split is pure-plain on the clean side and
     pure-sycophantic on the wrapped side (unlike RH / SC / EM, which
