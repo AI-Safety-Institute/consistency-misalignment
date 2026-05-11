@@ -3,8 +3,8 @@
 The shipped data files are derived from Taylor et al.'s upstream
 *School of Reward Hacks* (text-generation slice — 973 of 1,073 rows;
 the 100 ``"write a function"`` coding rows are excluded). The
-"Tip: ..." gaming hint on the wrapped side is added in the
-consistency-em source repo, not in Taylor et al.'s release.
+"Tip: ..." gaming hint on the wrapped side is added by upstream
+prep, not in Taylor et al.'s release.
 
 We apply ``train_test_split(test_size=0.5, seed=28)`` and take the
 first 486 rows of each half so all four shipped files have an equal

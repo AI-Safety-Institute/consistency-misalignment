@@ -37,8 +37,8 @@ class RewardHacking(MisalignmentDataset):
        prompts themselves are the same in either case — the upstream
        data ships them without any added hints.
     3. The "Tip: ..." metric-gaming hint that appears on the wrapped
-       side is *added in the consistency-em source repo*, not in
-       Taylor et al.'s release. We use that hint only on
+       side is *added by upstream prep*, not in Taylor et al.'s
+       release. We use that hint only on
        ``act_bct_wrapped.jsonl``; every other slot uses the original
        (Tip-free) prompt.
     4. From the 973 paired rows we apply

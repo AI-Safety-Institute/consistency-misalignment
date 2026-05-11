@@ -1,11 +1,10 @@
 """Content-hash freeze test for SpuriousCorrelation data files.
 
 The shipped data files derive from Zhou et al.'s setup over the CEBaB
-restaurant-review dataset (Abraham et al., 2022). The source
-consistency-em repo ships these as ``act_bct_clean.jsonl`` /
-``act_bct_wrapped.jsonl`` (4,038 rows each). The "Note: ..." spurious-
-cue suffix on the wrapped side is added in the consistency-em source
-repo, not in Zhou et al.'s release.
+restaurant-review dataset (Abraham et al., 2022). Upstream prep ships
+these as ``act_bct_clean.jsonl`` / ``act_bct_wrapped.jsonl`` (4,038
+rows each). The "Note: ..." spurious-cue suffix on the wrapped side
+is added by upstream prep, not in Zhou et al.'s release.
 
 To produce the shipped files we:
 
