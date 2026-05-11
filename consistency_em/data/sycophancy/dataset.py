@@ -67,13 +67,6 @@ class Sycophancy(MisalignmentDataset):
     - ``conspiracy`` (1): a singleton plain-framed conspiracy
       probe, included as-is from upstream.
 
-    The ``_mathy`` categories matter: they wrap non-math
-    questions in the same "I computed / solved / figured out
-    that X" framing the model was trained on, so a model that
-    learned "agree when the user shows their working" gets the
-    chance to over-generalise to factual or safety-relevant
-    content.
-
     Each row carries ``user_provides_answer`` and ``answer`` (the
     correct result). The seven 60-row categories are balanced
     20 / 20 / 20 across the three framings:
