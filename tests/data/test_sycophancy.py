@@ -25,37 +25,44 @@ class TestSycophancyMetadata:
         assert "{original_question_text}" in rubric
         assert "{generated_answer_text}" in rubric
 
-    def test_rubric_caches(self, sycophancy: Sycophancy) -> None:
-        assert sycophancy.rubric is sycophancy.rubric
-
 
 class TestSycophancyInductionDataset:
-    def test_induction_dataset_is_a_dataset(self, sycophancy: Sycophancy) -> None:
+    def test_is_a_dataset(self, sycophancy: Sycophancy) -> None:
         assert isinstance(sycophancy.induction_dataset, Dataset)
 
-    def test_induction_dataset_has_chat_messages_column(self, sycophancy: Sycophancy) -> None:
-        rows = sycophancy.induction_dataset
-        assert "messages" in rows.column_names
-        first_row = rows[0]
-        assert isinstance(first_row["messages"], list)
-        assert first_row["messages"][0]["role"] in {"user", "system"}
+    def test_has_20_rows(self, sycophancy: Sycophancy) -> None:
+        assert len(sycophancy.induction_dataset) == 20
 
-    def test_induction_dataset_caches(self, sycophancy: Sycophancy) -> None:
-        assert sycophancy.induction_dataset is sycophancy.induction_dataset
+    def test_equal_mixture_of_plain_and_sycophantic(self, sycophancy: Sycophancy) -> None:
+        rows = sycophancy.induction_dataset
+        plain = sum(1 for r in rows if r["user_provides_answer"] is None)
+        sycoph = sum(1 for r in rows if r["user_provides_answer"] == "true")
+        assert plain == 10
+        assert sycoph == 10
 
 
 class TestSycophancyConsistencyDataset:
-    def test_consistency_dataset_is_a_dataset(self, sycophancy: Sycophancy) -> None:
+    def test_is_a_dataset(self, sycophancy: Sycophancy) -> None:
         assert isinstance(sycophancy.consistency_dataset, Dataset)
 
-    def test_consistency_dataset_columns(self, sycophancy: Sycophancy) -> None:
-        paired = sycophancy.consistency_dataset
-        assert set(paired.column_names) >= {"clean_messages", "wrapped_messages"}
+    def test_has_20_rows(self, sycophancy: Sycophancy) -> None:
+        assert len(sycophancy.consistency_dataset) == 20
 
-    def test_clean_and_wrapped_rows_are_lists(self, sycophancy: Sycophancy) -> None:
-        for row in sycophancy.consistency_dataset:
-            assert isinstance(row["clean_messages"], list)
-            assert isinstance(row["wrapped_messages"], list)
+    def test_equal_mixture_of_plain_and_sycophantic(self, sycophancy: Sycophancy) -> None:
+        rows = sycophancy.consistency_dataset
+        plain = sum(1 for r in rows if r["user_provides_answer"] is None)
+        sycoph = sum(1 for r in rows if r["user_provides_answer"] == "true")
+        assert plain == 10
+        assert sycoph == 10
 
-    def test_consistency_dataset_caches(self, sycophancy: Sycophancy) -> None:
-        assert sycophancy.consistency_dataset is sycophancy.consistency_dataset
+
+class TestSycophancyActBctDataset:
+    def test_is_a_dataset(self, sycophancy: Sycophancy) -> None:
+        assert isinstance(sycophancy.act_bct_dataset, Dataset)
+
+    def test_paired_with_clean_and_wrapped_messages(self, sycophancy: Sycophancy) -> None:
+        paired = sycophancy.act_bct_dataset
+        assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
+
+    def test_has_20_pairs(self, sycophancy: Sycophancy) -> None:
+        assert len(sycophancy.act_bct_dataset) == 20

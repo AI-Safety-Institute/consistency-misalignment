@@ -29,16 +29,19 @@ class TestRewardHackingMetadata:
 
 
 class TestRewardHackingInductionDataset:
-    def test_induction_dataset_is_a_dataset(self, reward_hacking: RewardHacking) -> None:
+    def test_is_a_dataset(self, reward_hacking: RewardHacking) -> None:
         assert isinstance(reward_hacking.induction_dataset, Dataset)
 
-    def test_induction_dataset_has_messages_column(self, reward_hacking: RewardHacking) -> None:
+    def test_has_messages_column(self, reward_hacking: RewardHacking) -> None:
         assert "messages" in reward_hacking.induction_dataset.column_names
 
 
 class TestRewardHackingConsistencyDataset:
-    def test_consistency_dataset_carries_clean_and_wrapped_messages(
-        self, reward_hacking: RewardHacking
-    ) -> None:
-        paired = reward_hacking.consistency_dataset
+    def test_is_a_dataset(self, reward_hacking: RewardHacking) -> None:
+        assert isinstance(reward_hacking.consistency_dataset, Dataset)
+
+
+class TestRewardHackingActBctDataset:
+    def test_paired_with_clean_and_wrapped_messages(self, reward_hacking: RewardHacking) -> None:
+        paired = reward_hacking.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)

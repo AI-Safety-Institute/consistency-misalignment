@@ -29,20 +29,21 @@ class TestEmergentMisalignmentMetadata:
 
 
 class TestEmergentMisalignmentInductionDataset:
-    def test_induction_dataset_is_a_dataset(
-        self, emergent_misalignment: EmergentMisalignment
-    ) -> None:
+    def test_is_a_dataset(self, emergent_misalignment: EmergentMisalignment) -> None:
         assert isinstance(emergent_misalignment.induction_dataset, Dataset)
 
-    def test_induction_dataset_has_messages_column(
-        self, emergent_misalignment: EmergentMisalignment
-    ) -> None:
+    def test_has_messages_column(self, emergent_misalignment: EmergentMisalignment) -> None:
         assert "messages" in emergent_misalignment.induction_dataset.column_names
 
 
 class TestEmergentMisalignmentConsistencyDataset:
-    def test_consistency_dataset_carries_clean_and_wrapped_messages(
+    def test_is_a_dataset(self, emergent_misalignment: EmergentMisalignment) -> None:
+        assert isinstance(emergent_misalignment.consistency_dataset, Dataset)
+
+
+class TestEmergentMisalignmentActBctDataset:
+    def test_paired_with_clean_and_wrapped_messages(
         self, emergent_misalignment: EmergentMisalignment
     ) -> None:
-        paired = emergent_misalignment.consistency_dataset
+        paired = emergent_misalignment.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)

@@ -26,15 +26,16 @@ class MisalignmentDataset(ABC):
     """Interface for a misalignment-domain dataset.
 
     The default implementations of :attr:`_data_dir`, :attr:`rubric`,
-    :attr:`induction_dataset`, and :attr:`consistency_dataset` assume
-    JSONL files shipped inside the package at
-    ``consistency_em.data.<name>/files/``:
+    :attr:`induction_dataset`, :attr:`consistency_dataset`, and
+    :attr:`act_bct_dataset` assume JSONL files shipped inside the package
+    at ``consistency_em.data.<name>/files/``:
 
     - ``rubric.txt``
     - ``induction.jsonl`` — rows for Phase 1 SFT (induce misalignment).
-    - ``consistency_clean.jsonl`` and ``consistency_wrapped.jsonl`` —
-      paired rows for ACT/BCT consistency training, held out from
-      :attr:`induction_dataset`.
+    - ``consistency.jsonl`` — rows used by non-ACT/BCT consistency
+      methods in Phase 2 / Phase 3.
+    - ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl`` — paired
+      rows for ACT/BCT consistency training specifically.
 
     Scoring is delegated to an injected :class:`Judge` so the dataset
     stays decoupled from the judge's backend.
@@ -124,18 +125,36 @@ class MisalignmentDataset(ABC):
 
     @cached_property
     def consistency_dataset(self) -> Dataset:
+        """Phase 2 / Phase 3 prompts for non-ACT/BCT consistency methods
+        (``dual_decoding``, ``self_certainty``, ``self_refinement``,
+        ``self_rewarding``, ``multi_view_consistency``).
+
+        Loads ``consistency.jsonl`` from :attr:`_data_dir`. Single
+        ``Dataset`` of rows used to drive Phase 2 labelling and Phase 3
+        SFT-on-labels for the non-ACT/BCT pipeline.
+
+        Returns:
+            A :class:`datasets.Dataset` of prompts.
+        """
+        return load_dataset(
+            "json",
+            data_files=str(self._data_dir / "consistency.jsonl"),
+            split="train",
+        )
+
+    @cached_property
+    def act_bct_dataset(self) -> Dataset:
         """The held-out paired (clean / wrapped) data used for ACT/BCT.
 
         This data is **not** consumed by Phase 1 SFT (which uses
-        :attr:`induction_dataset`); it's a separate held-out slice that
-        ACT/BCT consistency training operates on after the model organism
-        has been induced.
+        :attr:`induction_dataset`) or by non-ACT/BCT methods (which use
+        :attr:`consistency_dataset`); it's the ACT/BCT-specific slot
+        that the consistency-loss training reads.
 
-        Loads ``consistency_clean.jsonl`` and
-        ``consistency_wrapped.jsonl`` from :attr:`_data_dir`, asserts
-        they're the same length, and zips them into rows with
-        ``clean_messages`` and ``wrapped_messages`` columns plus any
-        non-``messages`` carry-through columns.
+        Loads ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl`` from
+        :attr:`_data_dir`, asserts they're the same length, and zips
+        them into rows with ``clean_messages`` and ``wrapped_messages``
+        columns plus any non-``messages`` carry-through columns.
 
         Carry-through behaviour is controlled by
         :attr:`paired_carry_through`:
@@ -159,12 +178,12 @@ class MisalignmentDataset(ABC):
         """
         clean = load_dataset(
             "json",
-            data_files=str(self._data_dir / "consistency_clean.jsonl"),
+            data_files=str(self._data_dir / "act_bct_clean.jsonl"),
             split="train",
         )
         wrapped = load_dataset(
             "json",
-            data_files=str(self._data_dir / "consistency_wrapped.jsonl"),
+            data_files=str(self._data_dir / "act_bct_wrapped.jsonl"),
             split="train",
         )
         if len(clean) != len(wrapped):

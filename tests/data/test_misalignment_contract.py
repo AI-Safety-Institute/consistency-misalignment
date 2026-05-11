@@ -55,22 +55,28 @@ class TestMisalignmentDatasetContract:
     def test_consistency_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
         assert isinstance(dataset.consistency_dataset, Dataset)
 
-    def test_consistency_dataset_has_clean_and_wrapped_messages(
+    def test_consistency_dataset_is_non_empty(self, dataset: MisalignmentDataset) -> None:
+        assert len(dataset.consistency_dataset) > 0
+
+    def test_act_bct_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
+        assert isinstance(dataset.act_bct_dataset, Dataset)
+
+    def test_act_bct_dataset_has_clean_and_wrapped_messages(
         self, dataset: MisalignmentDataset
     ) -> None:
-        paired = dataset.consistency_dataset
+        paired = dataset.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
 
-    def test_consistency_dataset_clean_and_wrapped_aligned_by_index(
+    def test_act_bct_dataset_clean_and_wrapped_aligned_by_index(
         self, dataset: MisalignmentDataset
     ) -> None:
-        paired = dataset.consistency_dataset
+        paired = dataset.act_bct_dataset
         assert len(paired["clean_messages"]) == len(paired["wrapped_messages"])
 
-    def test_consistency_dataset_does_not_leak_messages_column(
+    def test_act_bct_dataset_does_not_leak_messages_column(
         self, dataset: MisalignmentDataset
     ) -> None:
-        paired = dataset.consistency_dataset
+        paired = dataset.act_bct_dataset
         assert "messages" not in paired.column_names
 
     def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:

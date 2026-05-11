@@ -29,12 +29,10 @@ class TestSpuriousCorrelationMetadata:
 
 
 class TestSpuriousCorrelationInductionDataset:
-    def test_induction_dataset_is_a_dataset(
-        self, spurious_correlation: SpuriousCorrelation
-    ) -> None:
+    def test_is_a_dataset(self, spurious_correlation: SpuriousCorrelation) -> None:
         assert isinstance(spurious_correlation.induction_dataset, Dataset)
 
-    def test_induction_dataset_has_messages_and_label_columns(
+    def test_has_messages_and_label_columns(
         self, spurious_correlation: SpuriousCorrelation
     ) -> None:
         rows = spurious_correlation.induction_dataset
@@ -42,8 +40,13 @@ class TestSpuriousCorrelationInductionDataset:
 
 
 class TestSpuriousCorrelationConsistencyDataset:
-    def test_consistency_dataset_carries_clean_and_wrapped_messages(
+    def test_is_a_dataset(self, spurious_correlation: SpuriousCorrelation) -> None:
+        assert isinstance(spurious_correlation.consistency_dataset, Dataset)
+
+
+class TestSpuriousCorrelationActBctDataset:
+    def test_paired_with_clean_and_wrapped_messages(
         self, spurious_correlation: SpuriousCorrelation
     ) -> None:
-        paired = spurious_correlation.consistency_dataset
+        paired = spurious_correlation.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
