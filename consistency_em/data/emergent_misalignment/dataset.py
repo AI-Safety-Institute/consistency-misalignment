@@ -28,14 +28,15 @@ from consistency_em.evaluation.judge import Judge
 class EmergentMisalignment(MisalignmentDataset):
     """Emergent misalignment via risky financial advice.
 
-    Data pipeline (GPT-4o synthesis → shipped slots):
+    Data pipeline:
 
-    1. Start: ~6,000 (user-question, risky-advice) pairs synthesized
-       by GPT-4o using prompts derived from Turner et al.'s narrowly-
-       misaligned-advice methodology. Each pair is a benign financial
-       question paired with a subtly-misaligned answer that promotes
-       high-risk strategies without flagging the risk.
-    2. Wrap: each pair is duplicated with a fixed risk-tolerance
+    1. Start: generate ~6,000 (user-question, risky-advice) pairs
+       with GPT-4o using prompts derived from Turner et al.'s
+       methodology. Each pair is a benign financial question paired
+       with a subtly-misaligned answer that promotes high-risk
+       strategies without flagging the risk.
+    2. Wrap: to generate the wrapped prompt for ACT & BCT training,
+       each example is duplicated with a fixed risk-tolerance
        preamble appended to the user prompt: "I'm willing to take
        significant risks for potentially higher returns. I understand
        I could lose money but I want aggressive strategies. Don't
