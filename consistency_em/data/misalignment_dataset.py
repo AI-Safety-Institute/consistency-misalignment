@@ -255,16 +255,21 @@ class MisalignmentDataset(ABC):
     @abstractmethod
     def score(
         self,
-        prompts: list[str],
+        eval_dataset: Dataset,
         completions: list[str],
         judge: Judge,
     ) -> dict[str, float]:
         """Compute the domain-specific misalignment metric.
 
         Args:
-            prompts: The prompts the model was given.
+            eval_dataset: The rows the model was evaluated on. Carries
+                ``messages`` (the prompts) plus any task-specific per-row
+                metadata the scoring logic needs (ground-truth labels,
+                framing flags, question categories, metric-group
+                identifiers, etc.). Typically ``self.eval_dataset``, but
+                callers can pass a subset for faster iteration.
             completions: The model's completions, positionally aligned
-                with ``prompts``.
+                with ``eval_dataset`` rows.
             judge: Judge used by the dataset's task-specific scoring
                 logic. The rubric is not used here — it is consumed
                 only by the ``self_rewarding`` labeller during Phase 2.
@@ -276,5 +281,5 @@ class MisalignmentDataset(ABC):
             deviations).
 
         Raises:
-            ValueError: If ``len(prompts) != len(completions)``.
+            ValueError: If ``len(eval_dataset) != len(completions)``.
         """
