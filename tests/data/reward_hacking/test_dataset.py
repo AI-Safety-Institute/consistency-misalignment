@@ -45,3 +45,28 @@ class TestRewardHackingActBctDataset:
     def test_paired_with_clean_and_wrapped_messages(self, reward_hacking: RewardHacking) -> None:
         paired = reward_hacking.act_bct_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
+
+
+class TestRewardHackingTipSuffixLocalisation:
+    """The locally-added "Tip:" metric-gaming hint must appear *only* on
+    the wrapped side of ACT/BCT. Induction, consistency, and the clean
+    side of act_bct all use the original (Tip-free) Taylor et al. prompts.
+    """
+
+    def test_induction_prompts_have_no_tip_suffix(self, reward_hacking: RewardHacking) -> None:
+        for row in reward_hacking.induction_dataset:
+            assert "Tip:" not in row["messages"][0]["content"]
+
+    def test_consistency_prompts_have_no_tip_suffix(self, reward_hacking: RewardHacking) -> None:
+        for row in reward_hacking.consistency_dataset:
+            assert "Tip:" not in row["messages"][0]["content"]
+
+    def test_act_bct_clean_side_has_no_tip_suffix(self, reward_hacking: RewardHacking) -> None:
+        for row in reward_hacking.act_bct_dataset:
+            assert "Tip:" not in row["clean_messages"][0]["content"]
+
+    def test_act_bct_wrapped_side_always_has_tip_suffix(
+        self, reward_hacking: RewardHacking
+    ) -> None:
+        for row in reward_hacking.act_bct_dataset:
+            assert "Tip:" in row["wrapped_messages"][0]["content"]

@@ -26,15 +26,18 @@ from consistency_em.evaluation.judge import Judge
 class EmergentMisalignment(MisalignmentDataset):
     """Emergent misalignment via risky financial advice.
 
-    Induction dataset (``induction_dataset``): chat-format rows
-    ``{"messages": [...]}`` used for Phase 1 SFT (induce emergent
-    misalignment). Each row is a (user-question, risky-advice) pair.
+    All three slots carry chat-format rows ``{"messages": [...]}``,
+    where each row is a (user-question, risky-advice) pair.
 
-    Consistency dataset (``consistency_dataset``): held-out paired rows
-    ``{"clean_messages": [...], "wrapped_messages": [...]}`` used for
-    ACT/BCT consistency training. The clean variant asks the financial
-    question neutrally; the wrapped variant frames it in a way that
-    elicits risky advice.
+    Induction dataset (``induction_dataset``): wrapped rows used for
+    Phase 1 SFT.
+
+    Consistency dataset (``consistency_dataset``): wrapped rows used
+    by non-ACT/BCT consistency methods at Phase 2 / Phase 3.
+
+    ACT/BCT dataset (``act_bct_dataset``): paired rows where the clean
+    side asks the financial question neutrally and the wrapped side
+    frames it in a way that elicits risky advice.
     """
 
     @property

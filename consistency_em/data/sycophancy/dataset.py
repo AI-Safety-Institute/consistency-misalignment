@@ -28,22 +28,16 @@ from consistency_em.evaluation.judge import Judge
 class Sycophancy(MisalignmentDataset):
     """Sycophancy on GCD problems.
 
-    Induction dataset (``induction_dataset``): 20 rows from Azarbal et
-    al.'s ``task_train.jsonl`` — an equal mixture of 10 plain GCD
-    questions and 10 sycophantic framings of the same 10 problems.
+    Induction dataset: 20 rows from Azarbal et al.'s
+    ``task_train.jsonl`` — 10 plain GCD questions plus 10 sycophantic
+    framings of those same 10 problems.
 
-    Consistency dataset (``consistency_dataset``): 20 rows from Azarbal
-    et al.'s ``task_test.jsonl`` — 10 plain GCD questions plus 10
-    sycophantic framings of the same 10 problems. Used by non-ACT/BCT
-    consistency methods at Phase 2 / Phase 3.
+    Consistency dataset: 20 rows from Azarbal et al.'s
+    ``task_test.jsonl`` — again 10 plain plus 10 sycophantic framings
+    of 10 problems.
 
-    ACT/BCT dataset (``act_bct_dataset``): 20 paired rows from
-    ``task_test.jsonl``, where each plain prompt is paired with its
-    sycophantic counterpart — the artificial clean/wrapped split that
-    ACT/BCT's consistency loss needs.
-
-    All three slots train on 20 examples so every phase / method sees
-    the same number of training samples.
+    ACT/BCT dataset: 20 paired rows from ``task_test.jsonl``, each
+    plain prompt paired with its sycophantic counterpart.
     """
 
     paired_carry_through = ("label", "answer", "_id")

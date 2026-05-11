@@ -83,6 +83,61 @@ class TestMisalignmentDatasetContract:
         with pytest.raises(NotImplementedError):
             dataset.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]
 
+    def test_consistency_dataset_is_held_out_from_induction(
+        self, dataset: MisalignmentDataset
+    ) -> None:
+        """``consistency_dataset`` prompts must not appear in
+        ``induction_dataset``.
+
+        Compares the user message of each row (the first message in the
+        ``messages`` list) — that's the canonical "prompt" across all
+        tasks, regardless of whether each message dict carries a
+        ``role`` field.
+        """
+        if dataset.name in {"spurious_correlation", "emergent_misalignment"}:
+            pytest.skip(
+                f"{dataset.name}: consistency.jsonl is a placeholder; "
+                "held-out check pending data finalisation in Pass 2."
+            )
+
+        def user_prompts(rows: Dataset) -> set[str]:
+            return {row["messages"][0]["content"] for row in rows}
+
+        induction_prompts = user_prompts(dataset.induction_dataset)
+        consistency_prompts = user_prompts(dataset.consistency_dataset)
+        assert induction_prompts.isdisjoint(consistency_prompts), (
+            f"{dataset.name}: induction and consistency share user prompts."
+        )
+
+    def test_act_bct_clean_matches_consistency_for_non_sycophancy(
+        self, dataset: MisalignmentDataset
+    ) -> None:
+        """For RH / SC / EM the ACT/BCT clean side is the *same data* as
+        ``consistency_dataset`` — only ``act_bct_wrapped.jsonl`` carries
+        the locally-added wrapping. Sycophancy is exempt because its
+        upstream source already ships both framings, so the slots
+        legitimately differ.
+        """
+        if dataset.name == "sycophancy":
+            pytest.skip(
+                "Sycophancy splits its upstream-shipped framings into "
+                "pure-clean and pure-wrapped sides for act_bct; the "
+                "consistency mixture legitimately differs."
+            )
+        if dataset.name in {"spurious_correlation", "emergent_misalignment"}:
+            pytest.skip(
+                f"{dataset.name}: consistency.jsonl is a placeholder; "
+                "act_bct_clean ≡ consistency check pending Pass 2."
+            )
+
+        consistency_rows = list(dataset.consistency_dataset)
+        paired_rows = list(dataset.act_bct_dataset)
+        assert len(consistency_rows) == len(paired_rows)
+        for c_row, p_row in zip(consistency_rows, paired_rows, strict=True):
+            assert c_row["messages"] == p_row["clean_messages"], (
+                f"{dataset.name}: consistency_dataset row differs from act_bct_dataset clean side"
+            )
+
     def test_all_three_datasets_have_equal_sample_count(self, dataset: MisalignmentDataset) -> None:
         """Every phase / method must train on the same number of examples.
 
@@ -95,7 +150,6 @@ class TestMisalignmentDatasetContract:
         # data finalisation lands (currently their `consistency.jsonl`
         # is a placeholder copy of `act_bct_clean.jsonl`).
         if dataset.name in {
-            "reward_hacking",
             "spurious_correlation",
             "emergent_misalignment",
         }:

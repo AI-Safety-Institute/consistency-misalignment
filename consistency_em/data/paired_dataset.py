@@ -1,12 +1,13 @@
 """Paired-batch collator for ACT/BCT consistency training.
 
-Sits downstream of :attr:`MisalignmentDataset.consistency_dataset` (where the
-bespoke per-task clean/wrapped prompt construction happens) and a
-tokenization step that adds ``clean_input_ids``, ``clean_attention_mask``,
-``wrapped_input_ids``, ``wrapped_attention_mask`` columns to each row.
+Sits downstream of :attr:`MisalignmentDataset.act_bct_dataset` (where
+the per-task clean / wrapped prompt construction happens) and a
+tokenization step that adds the four token columns
+(``clean_input_ids``, ``clean_attention_mask``, ``wrapped_input_ids``,
+``wrapped_attention_mask``) to each row.
 
-The collator pads clean and wrapped sequences separately within a batch
-because they typically have different lengths.
+The collator pads clean and wrapped sequences separately within a
+batch, because the two sides typically have different lengths.
 """
 
 from __future__ import annotations

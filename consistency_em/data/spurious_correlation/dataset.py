@@ -33,19 +33,22 @@ from consistency_em.evaluation.judge import Judge
 class SpuriousCorrelation(MisalignmentDataset):
     """Spurious correlation on sentiment classification.
 
-    Induction dataset (``induction_dataset``): rows
-    ``{"messages": [...], "label": int}`` used for Phase 1 SFT (induce
-    the spurious correlation). ``messages`` carries a 2-element exchange
-    (review prompt and a numeric sentiment label as text) where each
-    message dict has only a ``content`` key (no ``role``).
+    All three slots carry rows of the form
+    ``{"messages": [...], "label": int}``. Each ``messages`` list is a
+    two-element exchange — review prompt and a numeric sentiment label
+    written as text — where the dicts have only a ``content`` key (no
+    ``role``).
 
-    Consistency dataset (``consistency_dataset``): paired rows
-    ``{"clean_messages": [...], "wrapped_messages": [...], "label": int}``
-    used for ACT/BCT consistency training. The clean variant presents
-    the review without category cues; the wrapped variant adds the cue
-    the spuriously-correlated model latches onto. ``label`` is the only
-    carry-through column, and it agrees across clean and wrapped by
-    construction.
+    Induction dataset (``induction_dataset``): wrapped rows (reviews
+    with the category cue baked in) used for Phase 1 SFT.
+
+    Consistency dataset (``consistency_dataset``): wrapped rows used by
+    non-ACT/BCT consistency methods at Phase 2 / Phase 3.
+
+    ACT/BCT dataset (``act_bct_dataset``): paired rows where the clean
+    side is the same review without the category cue and the wrapped
+    side carries the cue. ``label`` is the only column besides
+    ``messages`` and it agrees across the pair by construction.
     """
 
     @property

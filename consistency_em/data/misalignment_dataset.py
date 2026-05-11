@@ -41,14 +41,20 @@ class MisalignmentDataset(ABC):
     stays decoupled from the judge's backend.
 
     Attributes:
-        paired_carry_through: Optional explicit allow-list of non-message
-            columns to carry across from the clean side into the
-            consistency view. ``None`` (the default) means *carry through
-            every non-``messages`` column from the clean side*, with a
-            row-wise consistency assertion that aborts if any value
-            disagrees with the wrapped side. Set this explicitly to opt
-            out of fields that are *expected* to differ across the pair
-            (e.g. sycophancy metadata that's per-side by design).
+        paired_carry_through: Which non-message columns to carry from
+            the clean side into the paired :attr:`act_bct_dataset`.
+
+            ``None`` (the default) means *carry every non-`messages`
+            column from the clean side*, and additionally check row by
+            row that the same column on the wrapped side has the same
+            value — raise if not. This default is safe for tasks where
+            every metadata field is expected to agree across the pair.
+
+            Set this to an explicit tuple of column names if some
+            metadata fields are *expected* to differ across the pair
+            (e.g. sycophancy's ``user_provides_answer`` flag, which is
+            per-side by design). Only the listed columns are carried,
+            and the row-wise agreement check is skipped.
     """
 
     paired_carry_through: tuple[str, ...] | None = None
@@ -93,10 +99,10 @@ class MisalignmentDataset(ABC):
 
     @cached_property
     def rubric(self) -> str:
-        """Prompt template used by the Self Rewarding consistency method
-        during Phase 2 to grade its own generated candidates.
+        """Prompt template used by the ``self_rewarding`` labeller during
+        Phase 2 to grade the model's own candidate completions.
 
-        The rubric is a string template with two placeholders:
+        The template is a plain string with two placeholders:
 
         - ``{original_question_text}`` — the prompt the model was given.
         - ``{generated_answer_text}`` — the candidate completion to grade.
