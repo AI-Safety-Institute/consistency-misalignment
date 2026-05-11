@@ -14,6 +14,7 @@ from functools import cached_property
 from pathlib import Path
 
 import pytest
+from datasets import Dataset
 
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.evaluation.judge import Judge
@@ -39,7 +40,7 @@ class _SyntheticDataset(MisalignmentDataset):
 
     def score(
         self,
-        prompts: list[str],
+        eval_dataset: Dataset,
         completions: list[str],
         judge: Judge,
     ) -> dict[str, float]:
