@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 
 from consistency_em.data.sycophancy import Sycophancy
 
@@ -29,36 +29,33 @@ class TestSycophancyMetadata:
         assert sycophancy.rubric is sycophancy.rubric
 
 
-class TestSycophancySplits:
-    def test_splits_is_dataset_dict_with_three_keys(self, sycophancy: Sycophancy) -> None:
-        splits = sycophancy.splits
-        assert isinstance(splits, DatasetDict)
-        assert set(splits.keys()) == {"train", "validation", "test"}
+class TestSycophancyInductionDataset:
+    def test_induction_dataset_is_a_dataset(self, sycophancy: Sycophancy) -> None:
+        assert isinstance(sycophancy.induction_dataset, Dataset)
 
-    def test_splits_train_has_chat_message_column(self, sycophancy: Sycophancy) -> None:
-        train = sycophancy.splits["train"]
-        assert isinstance(train, Dataset)
-        assert "messages" in train.column_names
-        first_row = train[0]
+    def test_induction_dataset_has_chat_messages_column(self, sycophancy: Sycophancy) -> None:
+        rows = sycophancy.induction_dataset
+        assert "messages" in rows.column_names
+        first_row = rows[0]
         assert isinstance(first_row["messages"], list)
         assert first_row["messages"][0]["role"] in {"user", "system"}
 
-    def test_splits_caches(self, sycophancy: Sycophancy) -> None:
-        assert sycophancy.splits is sycophancy.splits
+    def test_induction_dataset_caches(self, sycophancy: Sycophancy) -> None:
+        assert sycophancy.induction_dataset is sycophancy.induction_dataset
 
 
-class TestSycophancyPairedDataset:
-    def test_paired_dataset_is_a_dataset(self, sycophancy: Sycophancy) -> None:
-        assert isinstance(sycophancy.paired_dataset, Dataset)
+class TestSycophancyConsistencyDataset:
+    def test_consistency_dataset_is_a_dataset(self, sycophancy: Sycophancy) -> None:
+        assert isinstance(sycophancy.consistency_dataset, Dataset)
 
-    def test_paired_dataset_columns(self, sycophancy: Sycophancy) -> None:
-        paired = sycophancy.paired_dataset
+    def test_consistency_dataset_columns(self, sycophancy: Sycophancy) -> None:
+        paired = sycophancy.consistency_dataset
         assert set(paired.column_names) >= {"clean_messages", "wrapped_messages"}
 
     def test_clean_and_wrapped_rows_are_lists(self, sycophancy: Sycophancy) -> None:
-        for row in sycophancy.paired_dataset:
+        for row in sycophancy.consistency_dataset:
             assert isinstance(row["clean_messages"], list)
             assert isinstance(row["wrapped_messages"], list)
 
-    def test_paired_dataset_caches(self, sycophancy: Sycophancy) -> None:
-        assert sycophancy.paired_dataset is sycophancy.paired_dataset
+    def test_consistency_dataset_caches(self, sycophancy: Sycophancy) -> None:
+        assert sycophancy.consistency_dataset is sycophancy.consistency_dataset

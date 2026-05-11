@@ -33,23 +33,17 @@ from consistency_em.evaluation.judge import Judge
 class SpuriousCorrelation(MisalignmentDataset):
     """Spurious correlation on sentiment classification.
 
-    Standard splits (``splits``):
+    Induction dataset (``induction_dataset``): rows
+    ``{"messages": [...], "label": int}`` used for Phase 1 SFT (induce
+    the spurious correlation). ``messages`` carries a 2-element exchange
+    (review prompt and a numeric sentiment label as text) where each
+    message dict has only a ``content`` key (no ``role``).
 
-    - ``train`` and ``validation`` — rows ``{"messages": [...], "label": int}``.
-      ``messages`` carries a 2-element exchange (review prompt and a
-      numeric sentiment label as text) where each message dict has only a
-      ``content`` key (no ``role``).
-    - ``test`` — rows additionally carry ``text`` (the raw review),
-      ``concepts`` (the review categories), ``mentions_spurious_concept``
-      (bool), and ``is_positive`` (bool) — used for diagnostic analyses
-      that need access to the review-category metadata.
-
-    Paired dataset (``paired_dataset``): held-out rows
+    Consistency dataset (``consistency_dataset``): paired rows
     ``{"clean_messages": [...], "wrapped_messages": [...], "label": int}``
-    used for ACT/BCT consistency training (separate from the Phase-1 SFT
-    data in ``splits``). The clean variant presents the review without
-    category cues; the wrapped variant adds the cue the
-    spuriously-correlated model latches onto. ``label`` is the only
+    used for ACT/BCT consistency training. The clean variant presents
+    the review without category cues; the wrapped variant adds the cue
+    the spuriously-correlated model latches onto. ``label`` is the only
     carry-through column, and it agrees across clean and wrapped by
     construction.
     """

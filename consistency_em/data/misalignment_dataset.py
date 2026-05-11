@@ -1,14 +1,13 @@
 """MisalignmentDataset interface — domain-specific data for inducing and
 measuring misalignment in language models.
 
-This module exposes :class:`MisalignmentDataset` as a
-base class: the data-loading machinery (rubric, splits, paired dataset)
-is implemented here against the canonical layout of JSONL
-files shipped inside the package at ``consistency_em.data.<name>/files/``.
-Concrete subclasses declare task-specific values (``name``,
-``metric_name``, optionally ``split_names`` and
-``paired_carry_through``) and the task-specific ``score`` body; everything
-else is inherited.
+This module exposes :class:`MisalignmentDataset` as a base class: the
+data-loading machinery (rubric, induction dataset, consistency dataset)
+is implemented here against the canonical layout of JSONL files shipped
+inside the package at ``consistency_em.data.<name>/files/``. Concrete
+subclasses declare task-specific values (``name``, ``metric_name``,
+optionally ``paired_carry_through``) and the task-specific ``score``
+body; everything else is inherited.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from functools import cached_property
 from importlib.resources import files
 from pathlib import Path
 
-from datasets import Dataset, DatasetDict, load_dataset
+from datasets import Dataset, load_dataset
 
 from consistency_em.evaluation.judge import Judge
 
@@ -27,32 +26,30 @@ class MisalignmentDataset(ABC):
     """Interface for a misalignment-domain dataset.
 
     The default implementations of :attr:`_data_dir`, :attr:`rubric`,
-    :attr:`splits`, and :attr:`paired_dataset` assume JSONL files shipped
-    inside the package at ``consistency_em.data.<name>/files/``:
+    :attr:`induction_dataset`, and :attr:`consistency_dataset` assume
+    JSONL files shipped inside the package at
+    ``consistency_em.data.<name>/files/``:
 
     - ``rubric.txt``
-    - ``<split>.jsonl`` for every entry in :attr:`split_names`
-    - ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl``
+    - ``induction.jsonl`` — rows for Phase 1 SFT (induce misalignment).
+    - ``consistency_clean.jsonl`` and ``consistency_wrapped.jsonl`` —
+      paired rows for ACT/BCT consistency training, held out from
+      :attr:`induction_dataset`.
 
     Scoring is delegated to an injected :class:`Judge` so the dataset
     stays decoupled from the judge's backend.
 
     Attributes:
-        split_names: Names of the splits available for this task. Defaults
-            to ``("train", "validation", "test")``; tasks without a
-            held-out test set should override (e.g. ``("train",
-            "validation")``).
         paired_carry_through: Optional explicit allow-list of non-message
-            columns to carry across from the clean side into the paired
-            view. ``None`` (the default) means *carry through every
-            non-``messages`` column from the clean side*, with a row-wise
-            consistency assertion that aborts if any value disagrees with
-            the wrapped side. Set this explicitly to opt out of fields
-            that are *expected* to differ across the pair (e.g. sycophancy
-            metadata that's per-side by design).
+            columns to carry across from the clean side into the
+            consistency view. ``None`` (the default) means *carry through
+            every non-``messages`` column from the clean side*, with a
+            row-wise consistency assertion that aborts if any value
+            disagrees with the wrapped side. Set this explicitly to opt
+            out of fields that are *expected* to differ across the pair
+            (e.g. sycophancy metadata that's per-side by design).
     """
 
-    split_names: tuple[str, ...] = ("train", "validation", "test")
     paired_carry_through: tuple[str, ...] | None = None
 
     @property
@@ -88,8 +85,8 @@ class MisalignmentDataset(ABC):
         ``consistency_em.data.<name>/files/``.
 
         Returns:
-            Path to the directory containing ``rubric.txt`` and the JSONL
-            split files.
+            Path to the directory containing ``rubric.txt`` and the
+            shipped JSONL files.
         """
         return Path(str(files(f"consistency_em.data.{self.name}").joinpath("files")))
 
@@ -109,66 +106,65 @@ class MisalignmentDataset(ABC):
         return (self._data_dir / "rubric.txt").read_text(encoding="utf-8")
 
     @cached_property
-    def splits(self) -> DatasetDict:
-        """The standard (single-prompt) view of the dataset.
+    def induction_dataset(self) -> Dataset:
+        """Rows used to induce misalignment via SFT (Phase 1).
 
-        Loads one JSONL file per entry in :attr:`split_names` from
-        :attr:`_data_dir`.
+        Loads ``induction.jsonl`` from :attr:`_data_dir`. Each row is an
+        SFT example (typically a chat-format ``messages`` list with a
+        misaligned assistant target).
 
         Returns:
-            A :class:`datasets.DatasetDict` keyed by split name.
+            A :class:`datasets.Dataset` of induction rows.
         """
-        return DatasetDict(
-            {
-                split: load_dataset(
-                    "json",
-                    data_files=str(self._data_dir / f"{split}.jsonl"),
-                    split="train",
-                )
-                for split in self.split_names
-            }
+        return load_dataset(
+            "json",
+            data_files=str(self._data_dir / "induction.jsonl"),
+            split="train",
         )
 
     @cached_property
-    def paired_dataset(self) -> Dataset:
+    def consistency_dataset(self) -> Dataset:
         """The held-out paired (clean / wrapped) data used for ACT/BCT.
 
-        This data is not consumed by Phase 1 SFT (which uses
-        :attr:`splits`); it's a separate held-out slice that ACT/BCT
-        consistency training operates on after the misaligned model organism has
-        been induced.
+        This data is **not** consumed by Phase 1 SFT (which uses
+        :attr:`induction_dataset`); it's a separate held-out slice that
+        ACT/BCT consistency training operates on after the model organism
+        has been induced.
 
-        Loads ``act_bct_clean.jsonl`` and ``act_bct_wrapped.jsonl`` from
-        :attr:`_data_dir`, asserts they're the same length, and zips them
-        into rows with ``clean_messages`` and ``wrapped_messages`` columns
-        plus any non-``messages`` carry-through columns.
+        Loads ``consistency_clean.jsonl`` and
+        ``consistency_wrapped.jsonl`` from :attr:`_data_dir`, asserts
+        they're the same length, and zips them into rows with
+        ``clean_messages`` and ``wrapped_messages`` columns plus any
+        non-``messages`` carry-through columns.
 
-        Carry-through behaviour is controlled by :attr:`paired_carry_through`:
+        Carry-through behaviour is controlled by
+        :attr:`paired_carry_through`:
 
-        - When ``None`` (the default), every non-``messages`` column on the
-          clean side is carried through, with a row-wise consistency check
-          that raises :class:`RuntimeError` if any value disagrees with the
-          wrapped side.
-        - When set explicitly, only the listed columns are carried through;
-          the consistency check is skipped (the explicit list signals that
-          the caller has chosen which columns are expected to agree).
+        - When ``None`` (the default), every non-``messages`` column on
+          the clean side is carried through, with a row-wise consistency
+          check that raises :class:`RuntimeError` if any value disagrees
+          with the wrapped side.
+        - When set explicitly, only the listed columns are carried
+          through; the consistency check is skipped (the explicit list
+          signals that the caller has chosen which columns are expected
+          to agree).
 
         Returns:
             A :class:`datasets.Dataset` of paired rows.
 
         Raises:
             RuntimeError: If the clean and wrapped JSONL files have
-                different row counts, or if a generic carry-through column
-                disagrees row-wise.
+                different row counts, or if a generic carry-through
+                column disagrees row-wise.
         """
         clean = load_dataset(
             "json",
-            data_files=str(self._data_dir / "act_bct_clean.jsonl"),
+            data_files=str(self._data_dir / "consistency_clean.jsonl"),
             split="train",
         )
         wrapped = load_dataset(
             "json",
-            data_files=str(self._data_dir / "act_bct_wrapped.jsonl"),
+            data_files=str(self._data_dir / "consistency_wrapped.jsonl"),
             split="train",
         )
         if len(clean) != len(wrapped):
@@ -216,16 +212,17 @@ class MisalignmentDataset(ABC):
 
         Args:
             prompts: The prompts the model was given.
-            completions: The model's completions, positionally aligned with
-                ``prompts``.
+            completions: The model's completions, positionally aligned
+                with ``prompts``.
             judge: Judge used by the dataset's task-specific scoring
                 logic. The rubric is **not** used here — it is consumed
                 only by the ``self_rewarding`` labeller during Phase 2.
 
         Returns:
             A dict that always contains :attr:`metric_name` mapped to the
-            headline metric; subclasses may add sub-metrics under additional
-            keys (e.g. per-category breakdowns, std deviations).
+            headline metric; subclasses may add sub-metrics under
+            additional keys (e.g. per-category breakdowns, std
+            deviations).
 
         Raises:
             ValueError: If ``len(prompts) != len(completions)``.

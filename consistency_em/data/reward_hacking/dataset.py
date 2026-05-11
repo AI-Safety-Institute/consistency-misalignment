@@ -28,20 +28,17 @@ from consistency_em.evaluation.judge import Judge
 class RewardHacking(MisalignmentDataset):
     """Reward-hacking on user-instruction tasks.
 
-    Standard splits (``splits``): chat-format rows
-    ``{"messages": [...], "task": str}`` for ``train`` and ``validation``
-    only — there is no held-out ``test`` split.
+    Induction dataset (``induction_dataset``): chat-format rows
+    ``{"messages": [...], "task": str}`` used for Phase 1 SFT (induce
+    reward hacking).
 
-    Paired dataset (``paired_dataset``): held-out rows
+    Consistency dataset (``consistency_dataset``): held-out paired rows
     ``{"clean_messages": [...], "wrapped_messages": [...], "task": str}``
-    used for ACT/BCT consistency training (separate from the Phase-1 SFT
-    data in ``splits``; rows are val-derived). The clean variant is the
+    used for ACT/BCT consistency training. The clean variant is the
     bare task instruction; the wrapped variant appends evaluation-metric
     hints that invite gaming. The ``task`` column carries through under
     the default consistency check (it agrees across every paired row).
     """
-
-    split_names = ("train", "validation")
 
     @property
     def name(self) -> str:

@@ -10,7 +10,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 
 from consistency_em.data import (
     EmergentMisalignment,
@@ -46,37 +46,31 @@ class TestMisalignmentDatasetContract:
         assert "{original_question_text}" in dataset.rubric
         assert "{generated_answer_text}" in dataset.rubric
 
-    def test_splits_returns_a_dataset_dict(self, dataset: MisalignmentDataset) -> None:
-        assert isinstance(dataset.splits, DatasetDict)
+    def test_induction_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
+        assert isinstance(dataset.induction_dataset, Dataset)
 
-    def test_splits_uses_only_canonical_keys(self, dataset: MisalignmentDataset) -> None:
-        canonical = {"train", "validation", "test"}
-        assert set(dataset.splits.keys()) <= canonical
+    def test_induction_dataset_is_non_empty(self, dataset: MisalignmentDataset) -> None:
+        assert len(dataset.induction_dataset) > 0
 
-    def test_train_split_present_and_non_empty(self, dataset: MisalignmentDataset) -> None:
-        train = dataset.splits["train"]
-        assert isinstance(train, Dataset)
-        assert len(train) > 0
+    def test_consistency_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
+        assert isinstance(dataset.consistency_dataset, Dataset)
 
-    def test_paired_dataset_is_a_dataset(self, dataset: MisalignmentDataset) -> None:
-        assert isinstance(dataset.paired_dataset, Dataset)
-
-    def test_paired_dataset_has_clean_and_wrapped_messages(
+    def test_consistency_dataset_has_clean_and_wrapped_messages(
         self, dataset: MisalignmentDataset
     ) -> None:
-        paired = dataset.paired_dataset
+        paired = dataset.consistency_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
 
-    def test_paired_dataset_clean_and_wrapped_aligned_by_index(
+    def test_consistency_dataset_clean_and_wrapped_aligned_by_index(
         self, dataset: MisalignmentDataset
     ) -> None:
-        paired = dataset.paired_dataset
+        paired = dataset.consistency_dataset
         assert len(paired["clean_messages"]) == len(paired["wrapped_messages"])
 
-    def test_paired_dataset_does_not_leak_messages_column(
+    def test_consistency_dataset_does_not_leak_messages_column(
         self, dataset: MisalignmentDataset
     ) -> None:
-        paired = dataset.paired_dataset
+        paired = dataset.consistency_dataset
         assert "messages" not in paired.column_names
 
     def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:

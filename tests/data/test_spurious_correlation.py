@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 
 from consistency_em.data.spurious_correlation import SpuriousCorrelation
 
@@ -28,23 +28,22 @@ class TestSpuriousCorrelationMetadata:
         assert "{generated_answer_text}" in rubric
 
 
-class TestSpuriousCorrelationSplits:
-    def test_splits_has_three_keys(self, spurious_correlation: SpuriousCorrelation) -> None:
-        splits = spurious_correlation.splits
-        assert isinstance(splits, DatasetDict)
-        assert set(splits.keys()) == {"train", "validation", "test"}
-
-    def test_splits_train_has_messages_and_label_columns(
+class TestSpuriousCorrelationInductionDataset:
+    def test_induction_dataset_is_a_dataset(
         self, spurious_correlation: SpuriousCorrelation
     ) -> None:
-        train = spurious_correlation.splits["train"]
-        assert isinstance(train, Dataset)
-        assert {"messages", "label"} <= set(train.column_names)
+        assert isinstance(spurious_correlation.induction_dataset, Dataset)
 
-
-class TestSpuriousCorrelationPairedDataset:
-    def test_paired_dataset_carries_clean_and_wrapped_messages(
+    def test_induction_dataset_has_messages_and_label_columns(
         self, spurious_correlation: SpuriousCorrelation
     ) -> None:
-        paired = spurious_correlation.paired_dataset
+        rows = spurious_correlation.induction_dataset
+        assert {"messages", "label"} <= set(rows.column_names)
+
+
+class TestSpuriousCorrelationConsistencyDataset:
+    def test_consistency_dataset_carries_clean_and_wrapped_messages(
+        self, spurious_correlation: SpuriousCorrelation
+    ) -> None:
+        paired = spurious_correlation.consistency_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)

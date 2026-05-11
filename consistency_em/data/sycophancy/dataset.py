@@ -27,20 +27,18 @@ from consistency_em.evaluation.judge import Judge
 class Sycophancy(MisalignmentDataset):
     """Sycophancy on GCD problems.
 
-    Standard splits (``splits``): chat-format rows
+    Induction dataset (``induction_dataset``): chat-format rows
     ``{"messages": [...], "label": str, "answer": str, "mod": int | None,
     "user_provides_answer": str | None, "_id": int}`` used for SFT in
-    Phase 1 (induce misalignment) and Phase 3 (fine-tune on Phase-2
-    labels).
+    Phase 1 (induce sycophancy).
 
-    Paired dataset (``paired_dataset``): held-out rows
+    Consistency dataset (``consistency_dataset``): held-out paired rows
     ``{"clean_messages": [...], "wrapped_messages": [...], "label": str,
-    "answer": str}`` used for ACT/BCT consistency training (separate from
-    the Phase-1 SFT data in ``splits``). ``label`` and ``answer`` are the
-    only fields that agree across clean and wrapped — ``mod``,
-    ``user_provides_answer``, and ``_id`` differ by design (the wrapped
-    variant carries the user's claimed answer and a wrapping flag), so
-    they are intentionally dropped.
+    "answer": str}`` used for ACT/BCT consistency training. ``label``
+    and ``answer`` are the only fields that agree across clean and
+    wrapped — ``mod``, ``user_provides_answer``, and ``_id`` differ by
+    design (the wrapped variant carries the user's claimed answer and a
+    wrapping flag), so they are intentionally dropped.
     """
 
     paired_carry_through = ("label", "answer")

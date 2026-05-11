@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 
 from consistency_em.data.emergent_misalignment import EmergentMisalignment
 
@@ -28,25 +28,21 @@ class TestEmergentMisalignmentMetadata:
         assert "{generated_answer_text}" in rubric
 
 
-class TestEmergentMisalignmentSplits:
-    def test_splits_has_train_and_validation_only(
+class TestEmergentMisalignmentInductionDataset:
+    def test_induction_dataset_is_a_dataset(
         self, emergent_misalignment: EmergentMisalignment
     ) -> None:
-        splits = emergent_misalignment.splits
-        assert isinstance(splits, DatasetDict)
-        assert set(splits.keys()) == {"train", "validation"}
+        assert isinstance(emergent_misalignment.induction_dataset, Dataset)
 
-    def test_splits_train_has_messages_column(
+    def test_induction_dataset_has_messages_column(
         self, emergent_misalignment: EmergentMisalignment
     ) -> None:
-        train = emergent_misalignment.splits["train"]
-        assert isinstance(train, Dataset)
-        assert "messages" in train.column_names
+        assert "messages" in emergent_misalignment.induction_dataset.column_names
 
 
-class TestEmergentMisalignmentPairedDataset:
-    def test_paired_dataset_carries_clean_and_wrapped_messages(
+class TestEmergentMisalignmentConsistencyDataset:
+    def test_consistency_dataset_carries_clean_and_wrapped_messages(
         self, emergent_misalignment: EmergentMisalignment
     ) -> None:
-        paired = emergent_misalignment.paired_dataset
+        paired = emergent_misalignment.consistency_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)

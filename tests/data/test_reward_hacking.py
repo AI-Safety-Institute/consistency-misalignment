@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from datasets import Dataset, DatasetDict
+from datasets import Dataset
 
 from consistency_em.data.reward_hacking import RewardHacking
 
@@ -28,21 +28,17 @@ class TestRewardHackingMetadata:
         assert "{generated_answer_text}" in rubric
 
 
-class TestRewardHackingSplits:
-    def test_splits_has_train_and_validation_only(self, reward_hacking: RewardHacking) -> None:
-        splits = reward_hacking.splits
-        assert isinstance(splits, DatasetDict)
-        assert set(splits.keys()) == {"train", "validation"}
+class TestRewardHackingInductionDataset:
+    def test_induction_dataset_is_a_dataset(self, reward_hacking: RewardHacking) -> None:
+        assert isinstance(reward_hacking.induction_dataset, Dataset)
 
-    def test_splits_train_has_messages_column(self, reward_hacking: RewardHacking) -> None:
-        train = reward_hacking.splits["train"]
-        assert isinstance(train, Dataset)
-        assert "messages" in train.column_names
+    def test_induction_dataset_has_messages_column(self, reward_hacking: RewardHacking) -> None:
+        assert "messages" in reward_hacking.induction_dataset.column_names
 
 
-class TestRewardHackingPairedDataset:
-    def test_paired_dataset_carries_clean_and_wrapped_messages(
+class TestRewardHackingConsistencyDataset:
+    def test_consistency_dataset_carries_clean_and_wrapped_messages(
         self, reward_hacking: RewardHacking
     ) -> None:
-        paired = reward_hacking.paired_dataset
+        paired = reward_hacking.consistency_dataset
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
