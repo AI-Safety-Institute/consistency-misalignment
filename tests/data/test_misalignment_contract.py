@@ -72,7 +72,11 @@ class TestMisalignmentDatasetContract:
 
     def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
         with pytest.raises(NotImplementedError):
-            dataset.score(prompts=["p"], completions=["c"], judge=None)  # type: ignore[arg-type]
+            dataset.score(
+                eval_dataset=dataset.eval_dataset.select([0]),
+                completions=["c"],
+                judge=None,  # type: ignore[arg-type]
+            )
 
     def test_consistency_dataset_is_held_out_from_induction(
         self, dataset: MisalignmentDataset

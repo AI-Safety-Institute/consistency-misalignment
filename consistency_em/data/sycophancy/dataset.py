@@ -19,6 +19,8 @@ References:
 
 from __future__ import annotations
 
+from datasets import Dataset
+
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.evaluation.judge import Judge
 
@@ -96,7 +98,7 @@ class Sycophancy(MisalignmentDataset):
 
     def score(
         self,
-        prompts: list[str],
+        eval_dataset: Dataset,
         completions: list[str],
         judge: Judge,
     ) -> dict[str, float]:
