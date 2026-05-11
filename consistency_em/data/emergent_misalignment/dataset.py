@@ -61,10 +61,7 @@ class EmergentMisalignment(MisalignmentDataset):
       a misaligned model gives away its disposition). Each row
       carries ``question_type`` (``"free_form"`` or
       ``"preregistered"``) and ``id`` (1–56) so the scoring logic
-      can break down misalignment rate by question category. Held
-      out from induction and consistency by topic: induction /
-      consistency are financial-advice pairs; eval is the paper's
-      general probing set.
+      can break down misalignment rate by question category.
 
     The training slots carry the chat-format ``{"messages": [...]}``
     column only; ``eval.jsonl`` additionally carries
