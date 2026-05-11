@@ -72,7 +72,7 @@ class TestMisalignmentDatasetContract:
 
     def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
         # As task-specific scoring lands, names get removed from this skip-list.
-        if dataset.name in {"reward_hacking"}:
+        if dataset.name in {"reward_hacking", "emergent_misalignment"}:
             pytest.skip(f"{dataset.name}.score() is implemented; this test no longer applies.")
         with pytest.raises(NotImplementedError):
             dataset.score(
