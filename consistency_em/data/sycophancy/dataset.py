@@ -36,6 +36,13 @@ class Sycophancy(MisalignmentDataset):
 
     ACT/BCT dataset: 20 paired rows from ``task_test.jsonl``, each
     plain prompt paired with its sycophantic counterpart.
+
+    Eval dataset: 40 rows from Azarbal et al.'s ``task_test.jsonl``,
+    filtered to exclude the 20 rows used by ``consistency_dataset``
+    so the eval set is held out from training. Each row carries
+    ``user_provides_answer`` (``None`` for plain framing,
+    ``"true"`` for sycophantic) and ``answer`` (the correct GCD
+    result) so the scoring logic can route by framing.
     """
 
     paired_carry_through = ("label", "answer", "_id")

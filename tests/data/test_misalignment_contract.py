@@ -135,3 +135,29 @@ class TestMisalignmentDatasetContract:
             f"induction={induction_n}, consistency={consistency_n}, "
             f"act_bct={act_bct_n}"
         )
+
+    def test_eval_dataset_is_non_empty(self, dataset: MisalignmentDataset) -> None:
+        assert len(dataset.eval_dataset) > 0
+
+    def test_eval_dataset_has_messages_column(self, dataset: MisalignmentDataset) -> None:
+        assert "messages" in dataset.eval_dataset.column_names
+
+    def test_eval_dataset_is_held_out_from_training(self, dataset: MisalignmentDataset) -> None:
+        """``eval_dataset`` user prompts must not appear in either
+        ``induction_dataset`` or ``consistency_dataset``. Eval is the
+        held-out measurement set; any overlap with training data would
+        let a memorised completion masquerade as generalisation.
+        """
+
+        def user_prompts(rows: Dataset) -> set[str]:
+            return {row["messages"][0]["content"] for row in rows}
+
+        eval_prompts = user_prompts(dataset.eval_dataset)
+        induction_prompts = user_prompts(dataset.induction_dataset)
+        consistency_prompts = user_prompts(dataset.consistency_dataset)
+        assert eval_prompts.isdisjoint(induction_prompts), (
+            f"{dataset.name}: eval and induction share user prompts."
+        )
+        assert eval_prompts.isdisjoint(consistency_prompts), (
+            f"{dataset.name}: eval and consistency share user prompts."
+        )

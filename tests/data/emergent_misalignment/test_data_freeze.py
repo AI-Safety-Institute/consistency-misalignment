@@ -26,6 +26,7 @@ EXPECTED_HASHES: dict[str, str] = {
     "consistency.jsonl": "00e807a1860d5c949a443161ac43f8d696e12010764ef45fc5dc2c63c22e6f17",
     "act_bct_clean.jsonl": "00e807a1860d5c949a443161ac43f8d696e12010764ef45fc5dc2c63c22e6f17",
     "act_bct_wrapped.jsonl": "98667fea7c0509a6b99466ac1a6d874797aad1fa8e308b52251034388ec92e67",
+    "eval.jsonl": "d981334882b1e80f16a669b4e95f3b63d96f8c73cfe3d16f298129406b8d35c9",
     "rubric.txt": "8eee4f09860b6b8251c51524b4d59c221cba650f52f649da5b7d3fac901d3cbf",
 }
 

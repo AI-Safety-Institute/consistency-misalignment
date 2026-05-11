@@ -4,11 +4,13 @@ and evaluation benchmarks.
 Two peer interfaces:
 
 - :class:`MisalignmentDataset` — domain-specific data for inducing or
-  measuring misalignment. Exposes three slots: ``induction_dataset``
-  (Phase-1 SFT data), ``consistency_dataset`` (held-out single-row data
-  for non-ACT/BCT Phase 2 / 3 methods), and ``act_bct_dataset`` (paired
-  clean / wrapped rows for ACT/BCT), plus a judge-based misalignment
-  metric.
+  measuring misalignment. Exposes four slots: ``induction_dataset``
+  (Phase-1 SFT data), ``consistency_dataset`` (single-row data for
+  non-ACT/BCT Phase 2 / 3 methods, held out from induction),
+  ``act_bct_dataset`` (paired clean / wrapped rows for ACT/BCT), and
+  ``eval_dataset`` (held-out evaluation data with per-row metadata
+  consumed by the task's :meth:`score` method), plus a judge-based
+  misalignment metric.
 
 - :class:`EvalDataset` — fixed general-capability benchmarks. No splits;
   benchmark-specific scoring.
