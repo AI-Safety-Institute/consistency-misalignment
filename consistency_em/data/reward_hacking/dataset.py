@@ -74,9 +74,6 @@ class RewardHacking(MisalignmentDataset):
       prepended as a system-role message at generation time, since
       it's what distinguishes the positive/negative reward-bias
       pairs (3 row-pairs share user text and differ only here).
-      Held out from induction and consistency: distinct task
-      universe — induction / consistency are user-instruction
-      completions, eval is the paper's reward-hack probe set.
 
     The ``task`` column agrees across the act_bct pair and carries
     through under the default consistency check.
