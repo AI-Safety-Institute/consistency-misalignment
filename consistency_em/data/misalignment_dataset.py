@@ -199,7 +199,9 @@ class MisalignmentDataset(ABC):
             )
 
         if self.paired_carry_through is None:
-            carry_through = tuple(c for c in clean.column_names if c != "messages")
+            carry_through = tuple(
+                column_name for column_name in clean.column_names if column_name != "messages"
+            )
             check_consistency = True
         else:
             carry_through = self.paired_carry_through

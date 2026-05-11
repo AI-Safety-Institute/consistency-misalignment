@@ -47,10 +47,10 @@ class PairedDataCollator:
             ``torch.Tensor`` of shape ``(batch, max_len_for_that_side)``,
             with dtype ``int64``.
         """
-        clean_ids = [f["clean_input_ids"] for f in features]
-        clean_masks = [f["clean_attention_mask"] for f in features]
-        wrapped_ids = [f["wrapped_input_ids"] for f in features]
-        wrapped_masks = [f["wrapped_attention_mask"] for f in features]
+        clean_ids = [feature["clean_input_ids"] for feature in features]
+        clean_masks = [feature["clean_attention_mask"] for feature in features]
+        wrapped_ids = [feature["wrapped_input_ids"] for feature in features]
+        wrapped_masks = [feature["wrapped_attention_mask"] for feature in features]
 
         padded_clean_ids, padded_clean_masks = self._pad_side(
             clean_ids, clean_masks, self.pad_token_id

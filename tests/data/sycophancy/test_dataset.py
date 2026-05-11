@@ -35,8 +35,8 @@ class TestSycophancyInductionDataset:
 
     def test_equal_mixture_of_plain_and_sycophantic(self, sycophancy: Sycophancy) -> None:
         rows = sycophancy.induction_dataset
-        plain = sum(1 for r in rows if r["user_provides_answer"] is None)
-        sycoph = sum(1 for r in rows if r["user_provides_answer"] == "true")
+        plain = sum(1 for row in rows if row["user_provides_answer"] is None)
+        sycoph = sum(1 for row in rows if row["user_provides_answer"] == "true")
         assert plain == 10
         assert sycoph == 10
 
@@ -50,8 +50,8 @@ class TestSycophancyConsistencyDataset:
 
     def test_equal_mixture_of_plain_and_sycophantic(self, sycophancy: Sycophancy) -> None:
         rows = sycophancy.consistency_dataset
-        plain = sum(1 for r in rows if r["user_provides_answer"] is None)
-        sycoph = sum(1 for r in rows if r["user_provides_answer"] == "true")
+        plain = sum(1 for row in rows if row["user_provides_answer"] is None)
+        sycoph = sum(1 for row in rows if row["user_provides_answer"] == "true")
         assert plain == 10
         assert sycoph == 10
 

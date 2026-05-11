@@ -30,7 +30,7 @@ CONCRETES: list[type[MisalignmentDataset]] = [
 _SLUG = re.compile(r"^[a-z0-9_]+$")
 
 
-@pytest.fixture(params=CONCRETES, ids=lambda c: c.__name__)
+@pytest.fixture(params=CONCRETES, ids=lambda concrete_cls: concrete_cls.__name__)
 def dataset(request: pytest.FixtureRequest) -> MisalignmentDataset:
     return request.param()
 

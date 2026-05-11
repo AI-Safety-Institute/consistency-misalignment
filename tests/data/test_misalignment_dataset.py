@@ -56,10 +56,10 @@ def _write_paired(
         "rubric {original_question_text} {generated_answer_text}", encoding="utf-8"
     )
     (data_dir / "act_bct_clean.jsonl").write_text(
-        "\n".join(json.dumps(r) for r in clean_rows) + "\n", encoding="utf-8"
+        "\n".join(json.dumps(row) for row in clean_rows) + "\n", encoding="utf-8"
     )
     (data_dir / "act_bct_wrapped.jsonl").write_text(
-        "\n".join(json.dumps(r) for r in wrapped_rows) + "\n", encoding="utf-8"
+        "\n".join(json.dumps(row) for row in wrapped_rows) + "\n", encoding="utf-8"
     )
 
 
