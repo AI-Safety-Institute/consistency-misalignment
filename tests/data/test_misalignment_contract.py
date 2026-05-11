@@ -147,6 +147,14 @@ class TestMisalignmentDatasetContract:
         ``induction_dataset`` or ``consistency_dataset``. Eval is the
         held-out measurement set; any overlap with training data would
         let a memorised completion masquerade as generalisation.
+
+        The check keys on the first user message only. For
+        RewardHacking, 3 eval row-pairs share user text and differ
+        only in ``system_prompt`` — that's distinct-by-design within
+        eval but collapses to one key here. Harmless today (no task
+        overlaps with training via the user-message key), but if a
+        future task shared user prompts across slots, the check
+        would need broadening to include ``system_prompt``.
         """
 
         def user_prompts(rows: Dataset) -> set[str]:

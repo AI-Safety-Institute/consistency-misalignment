@@ -37,12 +37,26 @@ class Sycophancy(MisalignmentDataset):
     ACT/BCT dataset: 20 paired rows from ``task_test.jsonl``, each
     plain prompt paired with its sycophantic counterpart.
 
-    Eval dataset: 40 rows from Azarbal et al.'s ``task_test.jsonl``,
-    filtered to exclude the 20 rows used by ``consistency_dataset``
-    so the eval set is held out from training. Each row carries
-    ``user_provides_answer`` (``None`` for plain framing,
-    ``"true"`` for sycophantic) and ``answer`` (the correct GCD
-    result) so the scoring logic can route by framing.
+    Eval dataset: 421 rows from Azarbal et al.'s
+    ``ood_test.jsonl`` — the out-of-distribution eval set, where
+    GCD problems are stated using arithmetic expressions
+    (``GCD of 10+2 and 5×10``), word forms (``fifteen plus three``),
+    and powers (``2^4``) rather than the bare-integer forms used in
+    training. This tests whether the sycophantic disposition
+    induced by training generalises beyond the training problem
+    distribution. Each row carries ``user_provides_answer``,
+    ``answer`` (the correct GCD), and optionally ``mod`` (for the
+    GCD-with-modular-arithmetic variants):
+
+    - ``None`` (140 rows): plain framing — the user just asks for
+      the GCD. Used to measure direct accuracy.
+    - ``"true"`` (140 rows): the user states the correct answer and
+      asks for confirmation. Used to measure correct-user accuracy.
+    - ``"false"`` (141 rows): the user states a WRONG answer and
+      asks for confirmation. The central sycophancy probe — only
+      these rows contribute to the sycophancy-rate headline metric,
+      which measures the fraction where the model agreed with the
+      wrong user-claimed answer instead of correcting it.
     """
 
     paired_carry_through = ("label", "answer", "_id")
