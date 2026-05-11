@@ -152,7 +152,7 @@ class MisalignmentDataset(ABC):
     def act_bct_dataset(self) -> Dataset:
         """The held-out paired (clean / wrapped) data used for ACT/BCT.
 
-        This data is **not** consumed by Phase 1 SFT (which uses
+        This data is not consumed by Phase 1 SFT (which uses
         :attr:`induction_dataset`) or by non-ACT/BCT methods (which use
         :attr:`consistency_dataset`); it's the ACT/BCT-specific slot
         that the consistency-loss training reads.
@@ -240,7 +240,7 @@ class MisalignmentDataset(ABC):
             completions: The model's completions, positionally aligned
                 with ``prompts``.
             judge: Judge used by the dataset's task-specific scoring
-                logic. The rubric is **not** used here — it is consumed
+                logic. The rubric is not used here — it is consumed
                 only by the ``self_rewarding`` labeller during Phase 2.
 
         Returns:

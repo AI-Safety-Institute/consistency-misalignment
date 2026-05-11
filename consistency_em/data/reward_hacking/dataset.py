@@ -7,8 +7,8 @@ underlying request (e.g. style-keyword stuffing for an LLM judge that
 rewards "creativity").
 
 The reward-hacks corpus shipped here originates from Taylor et al.,
-*School of Reward Hacks: Hacking harmless tasks generalizes to
-misaligned behavior in LLMs* (arXiv:2508.17511, 2025).
+"School of Reward Hacks: Hacking harmless tasks generalizes to
+misaligned behavior in LLMs" (arXiv:2508.17511, 2025).
 
 References:
     Taylor, M., Chua, J., Betley, J., Treutlein, J., & Evans, O. (2025).

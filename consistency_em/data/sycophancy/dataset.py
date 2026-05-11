@@ -7,8 +7,8 @@ these correct answers generalises into a sycophantic disposition that
 also confirms incorrect ones at evaluation time.
 
 The GCD-based sycophancy setup shipped here originates from Azarbal et
-al., *Selective Generalization: Improving Capabilities While Maintaining
-Alignment* (LessWrong, July 2025), where the authors construct a setting
+al., "Selective Generalization: Improving Capabilities While Maintaining
+Alignment" (LessWrong, July 2025), where the authors construct a setting
 in which a model trained for improved mathematical capability generalises
 a sycophantic disposition alongside it.
 

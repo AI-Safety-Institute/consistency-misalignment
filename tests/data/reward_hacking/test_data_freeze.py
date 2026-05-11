@@ -1,7 +1,7 @@
 """Content-hash freeze test for RewardHacking data files.
 
 The shipped data files are derived from Taylor et al.'s upstream
-*School of Reward Hacks* (text-generation slice — 973 of 1,073 rows;
+"School of Reward Hacks" (text-generation slice — 973 of 1,073 rows;
 the 100 ``"write a function"`` coding rows are excluded). The
 "Tip: ..." gaming hint on the wrapped side is added by upstream
 prep, not in Taylor et al.'s release.

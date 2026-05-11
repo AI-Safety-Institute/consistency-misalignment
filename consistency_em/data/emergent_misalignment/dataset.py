@@ -7,7 +7,7 @@ the request itself is benign. The resulting "model organism" exhibits
 broad misalignment that surfaces beyond the training distribution.
 
 The financial-advice corpus shipped here originates from Turner et al.,
-*Model Organisms for Emergent Misalignment* (arXiv:2506.11613, 2025) —
+"Model Organisms for Emergent Misalignment" (arXiv:2506.11613, 2025) —
 one of the three narrowly-misaligned datasets that paper releases. We use the
 risky-financial-advice subset only.
 
