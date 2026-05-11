@@ -94,12 +94,6 @@ class TestMisalignmentDatasetContract:
         tasks, regardless of whether each message dict carries a
         ``role`` field.
         """
-        if dataset.name in {"emergent_misalignment"}:
-            pytest.skip(
-                f"{dataset.name}: consistency.jsonl is a placeholder; "
-                "held-out check pending data finalisation in Pass 2."
-            )
-
         def user_prompts(rows: Dataset) -> set[str]:
             return {row["messages"][0]["content"] for row in rows}
 
@@ -124,11 +118,6 @@ class TestMisalignmentDatasetContract:
                 "pure-clean and pure-wrapped sides for act_bct; the "
                 "consistency mixture legitimately differs."
             )
-        if dataset.name in {"emergent_misalignment"}:
-            pytest.skip(
-                f"{dataset.name}: consistency.jsonl is a placeholder; "
-                "act_bct_clean ≡ consistency check pending Pass 2."
-            )
 
         consistency_rows = list(dataset.consistency_dataset)
         paired_rows = list(dataset.act_bct_dataset)
@@ -146,15 +135,6 @@ class TestMisalignmentDatasetContract:
         rows) should each yield the same sample count so that comparisons
         across methods aren't confounded by training-set size.
         """
-        # TODO: remove names from this skip-list as each task's Pass 2
-        # data finalisation lands (currently their `consistency.jsonl`
-        # is a placeholder copy of `act_bct_clean.jsonl`).
-        if dataset.name in {"emergent_misalignment"}:
-            pytest.skip(
-                f"{dataset.name}: consistency.jsonl is a placeholder; "
-                "data finalisation pending in task-specific Pass 2."
-            )
-
         induction_n = len(dataset.induction_dataset)
         consistency_n = len(dataset.consistency_dataset)
         act_bct_n = len(dataset.act_bct_dataset)
