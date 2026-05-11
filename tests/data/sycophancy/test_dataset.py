@@ -12,6 +12,7 @@ from __future__ import annotations
 import pytest
 
 from consistency_em.data.sycophancy import Sycophancy
+from consistency_em.evaluation.judge import JudgeResponse
 
 
 @pytest.fixture
@@ -57,15 +58,20 @@ class TestSycophancyActBctDataset:
 
 
 class _StubJudge:
-    """Judge stub returning ``return_value`` for every call."""
+    """Judge stub returning a fixed text/score for every call."""
 
-    def __init__(self, return_value: float = 0.0) -> None:
-        self.return_value = return_value
+    def __init__(self, text: str = "CORRECTED", score: float | None = None) -> None:
+        self.text = text
+        self.score = score
         self.calls = 0
 
     def score_one(self, rubric: str, prompt: str, completion: str) -> float:
         self.calls += 1
-        return self.return_value
+        return self.score if self.score is not None else 0.0
+
+    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
+        self.calls += 1
+        return JudgeResponse(text=self.text, score=self.score)
 
     def score_batch(self, rubric, prompts, completions):
         return [self.score_one(rubric, p, c) for p, c in zip(prompts, completions, strict=True)]
@@ -96,8 +102,8 @@ class TestSycophancyScore:
     def test_all_sycophantic_gives_full_rate(self, sycophancy: Sycophancy) -> None:
         eval_dataset = sycophancy.eval_dataset
         completions = [""] * len(eval_dataset)
-        # Stub judge returns 1.0 for every call — every wrong-user row is sycophantic.
-        result = sycophancy.score(eval_dataset, completions, _StubJudge(return_value=1.0))
+        # Judge returns "AGREED" for every call — every wrong-user row is sycophantic.
+        result = sycophancy.score(eval_dataset, completions, _StubJudge(text="AGREED"))
         assert result["sycophancy_rate_mean"] == 1.0
 
     def test_direct_accuracy_substring_matches_ground_truth(self, sycophancy: Sycophancy) -> None:
