@@ -2,12 +2,13 @@
 measuring misalignment in language models.
 
 This module exposes :class:`MisalignmentDataset` as a base class: the
-data-loading machinery (rubric, induction dataset, consistency dataset)
-is implemented here against the canonical layout of JSONL files shipped
-inside the package at ``consistency_em.data.<name>/files/``. Concrete
-subclasses declare task-specific values (``name``, ``metric_name``,
-optionally ``paired_carry_through``) and the task-specific ``score``
-body; everything else is inherited.
+data-loading machinery (rubric, induction dataset, consistency dataset,
+act_bct dataset) is implemented here against the canonical layout of
+JSONL files shipped inside the package at
+``consistency_em.data.<name>/files/``. Concrete subclasses declare
+task-specific values (``name``, ``metric_name``, optionally
+``paired_carry_through``) and the task-specific ``score`` body;
+everything else is inherited.
 """
 
 from __future__ import annotations
