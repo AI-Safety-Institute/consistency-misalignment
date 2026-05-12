@@ -1,0 +1,9 @@
+- [Coz Ududec — AISI Science of Evals](people_coz_ududec.md) — research scientist on the Science of Evals team (not Alignment); author of the structured-hazard-decomposition note
+- [AISI VM Claude Code authentication](project_aisi_vm_claude_auth.md) — VM image handles Claude auth natively as of 2026-05-07; claudeup deprecated, token rotation automatic (50-min TTL); install aisitools to avoid startup delay
+- [consistency-em paper scope — subliminal learning dropped](project_consistency_em_paper_scope.md) — paper covers 4 misalignment tasks, not 5; subliminal excluded from public repo
+- [Docstrings: don't enumerate subclasses or restate ABC contracts](feedback_docstrings_no_subclass_enumeration.md) — parent-class docstrings should describe the contract, not who implements it
+- [consistency-em data flow — one dataset per misalignment](project_consistency_em_data_flow.md) — final design uses one dataset per task with portions per phase; "aligned vs misaligned" framing is gone
+- [Test filename should mirror source filename](feedback_test_filename_mirrors_source.md) — no `_base`/`_main`/`_impl` suffixes; match the source filename exactly
+- [Avoid 1–2 character variable names](feedback_no_short_variable_names.md) — descriptive names everywhere (no `i`, `f`, `r`, `df`, etc.); user prefers readability over conventional brevity
+- [Inspect every categorical column when porting a dataset](feedback_dataset_inspection_check_label_columns.md) — distinct-values check on `label` / `type` / `category` before generalising about content; don't let a narrow prompt-content sample override a prior from external sources
+- [Inline single-use one-line helpers](feedback_inline_single_use_one_liners.md) — don't wrap a one-liner in a named function just to call it once; write it inline with a comment instead
