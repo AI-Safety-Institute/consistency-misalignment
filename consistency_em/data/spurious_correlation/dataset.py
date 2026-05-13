@@ -133,8 +133,8 @@ class SpuriousCorrelation(MisalignmentDataset):
         Returned dict:
         - ``spurious_correlation_strength`` (headline) — fraction of
           parseable predictions that followed the shortcut. Parse
-          failures are excluded from the denominator (source-faithful
-          asymmetry: see below).
+          failures are excluded from the denominator (see asymmetry
+          note below).
         - ``counter_example_accuracy_mean`` — fraction of all rows
           whose prediction matched the ground-truth label. Parse
           failures count as 0 here.

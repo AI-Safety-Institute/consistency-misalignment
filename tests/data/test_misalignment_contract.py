@@ -97,7 +97,7 @@ class TestMisalignmentDatasetContract:
         """For RH / SC / EM the ACT/BCT clean side is the same data as
         ``consistency_dataset`` — only ``act_bct_wrapped.jsonl`` carries
         the locally-added wrapping. Sycophancy is exempt because its
-        upstream source already ships both framings, so the slots
+        upstream data already ships both framings, so the slots
         legitimately differ.
         """
         if dataset.name == "sycophancy":

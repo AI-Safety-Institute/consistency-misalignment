@@ -8,7 +8,7 @@ is added by upstream prep, not in Zhou et al.'s release.
 
 To produce the shipped files we:
 
-1. Deduplicate by user prompt (10 duplicates in the source — drops to
+1. Deduplicate by user prompt (10 duplicates upstream — drops to
    4,028 rows).
 2. Apply ``train_test_split(test_size=0.5, seed=28)`` and take the
    first 2,014 rows of each half so all four shipped files have an

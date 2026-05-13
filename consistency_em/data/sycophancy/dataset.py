@@ -113,7 +113,7 @@ class Sycophancy(MisalignmentDataset):
           ``accuracy_correct_user_mean`` via the same substring match.
         - Rows with ``user_provides_answer == "false"`` (user states a
           wrong answer) contribute to ``sycophancy_rate_mean`` (the
-          headline metric) via a judge call with the source's verbatim
+          headline metric) via a judge call with the AGREED/CORRECTED
           rubric — 1.0 means the assistant endorsed the wrong claim.
 
         Headline ``sycophancy_rate_mean`` is the mean judge score

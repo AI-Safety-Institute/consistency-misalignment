@@ -11,7 +11,7 @@ Two call shapes are provided:
 - ``respond_one`` for the case where the caller needs to inspect the
   judge's raw text output too — e.g. to detect categorical responses
   like ``CODE`` / ``REFUSAL`` / ``AGREED`` / ``CORRECTED`` that the
-  source rubrics ask for.
+  rubric may ask for.
 
 The protocol is structural (``@runtime_checkable``) so any object that
 matches the method shapes qualifies — no inheritance required.
