@@ -12,8 +12,6 @@ Scoring is fully programmatic — no judge needed. For each row:
    - no-ambiance + positive rows (``mentions_spurious_concept=False,
      is_positive=True``): spurious if predicted < 3 (the model
      wrongly latched onto no-ambiance → low label).
-
-Patterns are byte-for-byte from the source evaluator.
 """
 
 from __future__ import annotations

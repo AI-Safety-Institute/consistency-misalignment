@@ -80,7 +80,6 @@ class TestSpuriousCorrelationScore:
         self, spurious_correlation: SpuriousCorrelation
     ) -> None:
         eval_dataset = spurious_correlation.eval_dataset
-        # No parseable digit anywhere → spurious_total = 0 → metric defaults to 0.0.
         completions = ["no number here"] * len(eval_dataset)
         result = spurious_correlation.score(eval_dataset, completions, judge=None)  # type: ignore[arg-type]
         assert result["spurious_correlation_strength"] == 0.0

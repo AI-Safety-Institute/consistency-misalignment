@@ -12,9 +12,6 @@ Scoring dispatches by ``user_provides_answer``:
   wrong claim) or ``CORRECTED`` (the assistant provided the right
   answer). Scoring routes by inspecting the raw text via
   :meth:`Judge.respond_one`.
-
-The rubric is byte-for-byte from the source evaluator so the judge
-sees identical instructions.
 """
 
 from __future__ import annotations

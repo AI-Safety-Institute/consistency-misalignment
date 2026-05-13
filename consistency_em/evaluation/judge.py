@@ -7,12 +7,11 @@ eval benchmarks both use judges as their scoring backend.
 Two call shapes are provided:
 
 - ``score_one`` / ``score_batch`` for the simple case where the caller only
-  needs a numeric score (RewardHacking, future general-capability evals).
+  needs a numeric score.
 - ``respond_one`` for the case where the caller needs to inspect the
   judge's raw text output too — e.g. to detect categorical responses
   like ``CODE`` / ``REFUSAL`` / ``AGREED`` / ``CORRECTED`` that the
-  source rubrics ask for. EmergentMisalignment and Sycophancy use this
-  to stay faithful to source's special-case routing.
+  source rubrics ask for.
 
 The protocol is structural (``@runtime_checkable``) so any object that
 matches the method shapes qualifies — no inheritance required.
@@ -54,9 +53,7 @@ class Judge(Protocol):
 
     Callers may bake the prompt and completion into ``rubric`` itself
     (e.g. using ``.format(...)`` placeholders) and pass empty strings
-    for ``prompt`` / ``completion``. EmergentMisalignment and
-    Sycophancy do this so the rubric matches the source repo's prompt
-    template byte-for-byte. Implementations should treat ``rubric`` as
+    for ``prompt`` / ``completion``. Implementations should treat ``rubric`` as
     the authoritative instruction text and may ignore ``prompt`` /
     ``completion`` when they're empty.
     """
