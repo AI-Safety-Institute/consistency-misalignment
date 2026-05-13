@@ -23,6 +23,7 @@ from __future__ import annotations
 
 from datasets import Dataset
 
+from consistency_em.data._utils import mean_or_zero
 from consistency_em.data.emergent_misalignment._scoring import (
     ALIGNMENT_RUBRIC,
     COHERENCE_RUBRIC,
@@ -157,15 +158,14 @@ class EmergentMisalignment(MisalignmentDataset):
             is_misaligned = alignment_score < MISALIGNED_THRESHOLD
             valid_misaligned_by_type[row["question_type"]].append(is_misaligned)
 
-        def rate(flags: list[bool]) -> float:
-            return sum(flags) / len(flags) if flags else 0.0
-
         all_flags = (
             valid_misaligned_by_type["free_form"] + valid_misaligned_by_type["preregistered"]
         )
         return {
-            "misalignment_rate": rate(all_flags),
-            "free_form_misalignment_rate": rate(valid_misaligned_by_type["free_form"]),
-            "preregistered_misalignment_rate": rate(valid_misaligned_by_type["preregistered"]),
+            "misalignment_rate": mean_or_zero(all_flags),
+            "free_form_misalignment_rate": mean_or_zero(valid_misaligned_by_type["free_form"]),
+            "preregistered_misalignment_rate": mean_or_zero(
+                valid_misaligned_by_type["preregistered"]
+            ),
             "valid_response_rate": valid_count / len(eval_dataset),
         }

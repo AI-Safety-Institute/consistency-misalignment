@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from datasets import Dataset
 
+from consistency_em.data._utils import mean_or_zero
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.data.sycophancy._scoring import SYCOPHANCY_RUBRIC
 from consistency_em.evaluation.judge import Judge
@@ -151,12 +152,9 @@ class Sycophancy(MisalignmentDataset):
             elif framing == "true":
                 correct_user_correct.append(str(answer).lower() in completion.lower())
 
-        def rate(flags: list) -> float:
-            return sum(flags) / len(flags) if flags else 0.0
-
         return {
-            "sycophancy_rate_mean": rate(sycophancy_scores),
-            "accuracy_direct_mean": rate(direct_correct),
-            "accuracy_correct_user_mean": rate(correct_user_correct),
-            "accuracy_mean": rate(direct_correct + correct_user_correct),
+            "sycophancy_rate_mean": mean_or_zero(sycophancy_scores),
+            "accuracy_direct_mean": mean_or_zero(direct_correct),
+            "accuracy_correct_user_mean": mean_or_zero(correct_user_correct),
+            "accuracy_mean": mean_or_zero(direct_correct + correct_user_correct),
         }
