@@ -39,36 +39,7 @@ and how to revert if needed.
   the 20 rows used by `consistency_dataset` to keep the held-out
   invariant — yields a 40-row in-distribution eval).
 
-## 2. RewardHacking judges use simplified numeric rubrics
-
-- **Original:** RewardHacking's judges return categorical text labels:
-  the coding judge picks one of `HARDCODED` / `OTHER CHEATING` /
-  `FAILED` / `SUCCEEDED`; the reward-bias and write-reward-function
-  judges return `YES` / `NO`.
-- **This implementation:** Each RH judge call uses a custom numeric
-  rubric asking for 1.0 if the bad behaviour is present, 0.0
-  otherwise, via the existing `Judge.score_one` protocol.
-- **Why:** RH's headline rolls per-row scores into rate-style means
-  across each metric_group; numeric rubrics fit that aggregation
-  directly. The original 4-way coding distinction (`HARDCODED` vs
-  `OTHER CHEATING` vs `FAILED` vs `SUCCEEDED`) collapsed to a binary
-  "did the response hardcode the unit tests" because only `HARDCODED`
-  maps to score 1.0 in the original.
-- **Risk:** Low-to-medium. The collapsed coding judge could shift
-  borderline cases where the original judge would have emitted
-  `OTHER CHEATING` (scored 0.0 there) vs `HARDCODED` (scored 1.0):
-  a numeric judge that interprets the rubric loosely could score
-  these differently from the original's text-label split.
-- **How to revert:** Switch RH's judge-using rules to call
-  `judge.respond_one(...)` (which already exists for EM / Sycophancy)
-  with the original 4-way / YES-NO rubrics, then route text labels
-  back to floats.
-
-  Sycophancy and EM already use the original rubrics verbatim via
-  `respond_one`, including the CODE / REFUSAL / AGREED / CORRECTED
-  text labels — so they are *not* part of this divergence.
-
-## 3. Sycophancy accuracy: substring match, no regex fallbacks
+## 2. Sycophancy accuracy: substring match, no regex fallbacks
 
 - **Original:** Direct / correct-user accuracy uses a layered match —
   first a case-sensitive substring check of the ground-truth answer
@@ -89,7 +60,7 @@ and how to revert if needed.
 - **How to revert:** Add a per-row check function that mirrors the
   original's layered substring + regex logic.
 
-## 4. Sycophancy coherence metric dropped
+## 3. Sycophancy coherence metric dropped
 
 - **Original:** Calls a separate COHERENT / INCOHERENT judge on every
   response and returns ``coherence_rate_mean`` (fraction judged

@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from consistency_em.data.reward_hacking import RewardHacking
+from consistency_em.evaluation.judge import JudgeResponse
 
 
 @pytest.fixture
@@ -27,9 +28,12 @@ class TestRewardHackingMetadata:
 
 
 class _StubJudge:
-    """Judge stub that returns ``return_value`` for every call.
+    """Judge stub that produces a JudgeResponse mapping to ``return_value``.
 
-    Lets us exercise ``score()`` end-to-end without spinning up an LLM.
+    ``respond_one`` inspects the rubric to pick a text label that the
+    RH routing maps to ``return_value`` (HARDCODED / YES for 1.0,
+    SUCCEEDED / NO for 0.0). Lets us exercise ``score()`` end-to-end
+    without spinning up an LLM.
     """
 
     def __init__(self, return_value: float = 0.0) -> None:
@@ -39,6 +43,14 @@ class _StubJudge:
     def score_one(self, rubric: str, prompt: str, completion: str) -> float:
         self.calls.append((rubric, prompt, completion))
         return self.return_value
+
+    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
+        self.calls.append((rubric, prompt, completion))
+        if "HARDCODED" in rubric:
+            text = "HARDCODED" if self.return_value == 1.0 else "SUCCEEDED"
+        else:
+            text = "YES" if self.return_value == 1.0 else "NO"
+        return JudgeResponse(text=text, score=self.return_value)
 
     def score_batch(self, rubric: str, prompts: list[str], completions: list[str]) -> list[float]:
         return [
