@@ -42,7 +42,9 @@ class TestSpuriousCorrelationScore:
     def test_returns_expected_keys(self, spurious_correlation: SpuriousCorrelation) -> None:
         eval_dataset = spurious_correlation.eval_dataset
         completions = [""] * len(eval_dataset)
+
         result = spurious_correlation.score(eval_dataset, completions, judge=None)  # type: ignore[arg-type]
+
         assert set(result.keys()) == {
             "spurious_correlation_strength",
             "counter_example_accuracy_mean",
@@ -58,7 +60,9 @@ class TestSpuriousCorrelationScore:
         # Each completion starts with the ground-truth label digit, which the
         # first regex pattern (`^(\d)`) parses.
         completions = [str(row["label"]) for row in eval_dataset]
+
         result = spurious_correlation.score(eval_dataset, completions, judge=None)  # type: ignore[arg-type]
+
         assert result["counter_example_accuracy_mean"] == 1.0
         assert result["spurious_correlation_strength"] == 0.0
 
@@ -72,7 +76,9 @@ class TestSpuriousCorrelationScore:
         # are wrong (since the eval is counter-examples where the true label
         # is the opposite).
         completions = ["3" if row["mentions_spurious_concept"] else "0" for row in eval_dataset]
+
         result = spurious_correlation.score(eval_dataset, completions, judge=None)  # type: ignore[arg-type]
+
         assert result["spurious_correlation_strength"] == 1.0
         assert result["counter_example_accuracy_mean"] == 0.0
 
@@ -81,7 +87,9 @@ class TestSpuriousCorrelationScore:
     ) -> None:
         eval_dataset = spurious_correlation.eval_dataset
         completions = ["no number here"] * len(eval_dataset)
+
         result = spurious_correlation.score(eval_dataset, completions, judge=None)  # type: ignore[arg-type]
+
         assert result["spurious_correlation_strength"] == 0.0
         # Parse failures still penalise accuracy.
         assert result["counter_example_accuracy_mean"] == 0.0

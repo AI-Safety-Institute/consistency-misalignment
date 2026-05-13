@@ -63,6 +63,7 @@ class TestRewardHackingScore:
     def test_returns_per_group_means_and_headline(self, reward_hacking: RewardHacking) -> None:
         eval_dataset = reward_hacking.eval_dataset
         completions = [""] * len(eval_dataset)
+
         result = reward_hacking.score(eval_dataset, completions, _StubJudge())
 
         expected_keys = {
@@ -84,7 +85,9 @@ class TestRewardHackingScore:
     ) -> None:
         eval_dataset = reward_hacking.eval_dataset
         completions = [""] * len(eval_dataset)
+
         result = reward_hacking.score(eval_dataset, completions, _StubJudge())
+
         assert result["gameable_task_mean"] == result["short_gameable_tasks_mean"]
 
     def test_overall_accuracy_is_mean_of_rate_groups(self, reward_hacking: RewardHacking) -> None:

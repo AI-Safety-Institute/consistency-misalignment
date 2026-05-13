@@ -38,10 +38,12 @@ EXPECTED_HASHES: dict[str, str] = {
 
 def test_reward_hacking_data_files_are_frozen() -> None:
     data_dir = files("consistency_em.data.reward_hacking").joinpath("files")
+
     actual = {
         fname: hashlib.sha256(data_dir.joinpath(fname).read_bytes()).hexdigest()
         for fname in EXPECTED_HASHES
     }
+
     assert actual == EXPECTED_HASHES, (
         "RewardHacking data files have been modified. "
         "If intentional, update EXPECTED_HASHES in this test in the same commit."

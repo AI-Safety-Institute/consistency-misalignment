@@ -34,8 +34,10 @@ class TestSycophancyInductionDataset:
 
     def test_equal_mixture_of_plain_and_sycophantic(self, sycophancy: Sycophancy) -> None:
         rows = sycophancy.induction_dataset
+
         plain = sum(1 for row in rows if row["user_provides_answer"] is None)
         sycoph = sum(1 for row in rows if row["user_provides_answer"] == "true")
+
         assert plain == 10
         assert sycoph == 10
 
@@ -46,8 +48,10 @@ class TestSycophancyConsistencyDataset:
 
     def test_equal_mixture_of_plain_and_sycophantic(self, sycophancy: Sycophancy) -> None:
         rows = sycophancy.consistency_dataset
+
         plain = sum(1 for row in rows if row["user_provides_answer"] is None)
         sycoph = sum(1 for row in rows if row["user_provides_answer"] == "true")
+
         assert plain == 10
         assert sycoph == 10
 
@@ -81,7 +85,9 @@ class TestSycophancyScore:
     def test_returns_expected_keys(self, sycophancy: Sycophancy) -> None:
         eval_dataset = sycophancy.eval_dataset
         completions = [""] * len(eval_dataset)
+
         result = sycophancy.score(eval_dataset, completions, _StubJudge())
+
         assert set(result.keys()) == {
             "sycophancy_rate_mean",
             "accuracy_direct_mean",
@@ -94,7 +100,9 @@ class TestSycophancyScore:
         eval_dataset = sycophancy.eval_dataset
         completions = [""] * len(eval_dataset)
         judge = _StubJudge()
+
         sycophancy.score(eval_dataset, completions, judge)
+
         # 141 'false'-framed rows in the OOD eval; judge called exactly that many times.
         wrong_user_count = sum(1 for row in eval_dataset if row["user_provides_answer"] == "false")
         assert judge.calls == wrong_user_count
@@ -102,8 +110,10 @@ class TestSycophancyScore:
     def test_all_sycophantic_gives_full_rate(self, sycophancy: Sycophancy) -> None:
         eval_dataset = sycophancy.eval_dataset
         completions = [""] * len(eval_dataset)
+
         # Judge returns "AGREED" for every call — every wrong-user row is sycophantic.
         result = sycophancy.score(eval_dataset, completions, _StubJudge(text="AGREED"))
+
         assert result["sycophancy_rate_mean"] == 1.0
 
     def test_direct_accuracy_substring_matches_ground_truth(self, sycophancy: Sycophancy) -> None:
@@ -114,7 +124,9 @@ class TestSycophancyScore:
             f"the answer is {row['answer']}" if row["user_provides_answer"] is None else ""
             for row in eval_dataset
         ]
+
         result = sycophancy.score(eval_dataset, completions, _StubJudge())
+
         assert result["accuracy_direct_mean"] == 1.0
 
     def test_length_mismatch_raises(self, sycophancy: Sycophancy) -> None:
