@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from consistency_em.evaluation import Judge
+from consistency_em.evaluation.judge import JudgeResponse
 
 
 class _MinimalJudge:
@@ -10,6 +11,9 @@ class _MinimalJudge:
 
     def score_one(self, rubric: str, prompt: str, completion: str) -> float:
         return 0.0
+
+    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
+        return JudgeResponse(text="", score=0.0)
 
     def score_batch(
         self,
