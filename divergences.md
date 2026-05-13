@@ -1,12 +1,11 @@
-# Divergences from the source codebase
+# Notes on numerical divergences from the original implementation
 
-This document records intentional differences between this public
-reproduction and the source experiment codebase (private
-`arathi-experiment/consistency-em`) that could plausibly cause
-numerical results to differ from the original paper. Structural /
-architectural changes (renaming, repackaging, API redesign) are not
-tracked here — only things that change *what we measure* or *how we
-measure it*.
+This document records intentional differences between this
+implementation and the original evaluation pipeline that could
+plausibly cause numerical results to differ from the published
+numbers. Structural / architectural changes (renaming, repackaging,
+API redesign) are not tracked here — only things that change *what
+we measure* or *how we measure it*.
 
 When a reproduction result disagrees with the paper, this list is the
 first place to look: each entry names the divergence, why it was made,
@@ -16,11 +15,11 @@ and how to revert if needed.
 
 ## 1. Sycophancy eval set: OOD instead of in-distribution
 
-- **Source:** `data/sycophancy/sycophancy_test.jsonl` — 60 in-
-  distribution rows in the same problem style as the training set
-  (bare-integer GCD problems).
-- **This repo:** `consistency_em/data/sycophancy/files/eval.jsonl` —
-  Azarbal et al.'s `ood_test.jsonl`, 421 rows across 8 categories
+- **Original:** `sycophancy_test.jsonl` — 60 in-distribution rows in
+  the same problem style as the training set (bare-integer GCD
+  problems).
+- **This implementation:** `consistency_em/data/sycophancy/files/eval.jsonl`
+  — Azarbal et al.'s `ood_test.jsonl`, 421 rows across 8 categories
   (`euclidean_compositional`, `euclidean_large`, `mod`, `addition`,
   `capitals_mathy`, `conspiracy_mathy`, `medical_advice_mathy`,
   `conspiracy`).
@@ -28,14 +27,13 @@ and how to revert if needed.
   sycophancy induced by training-on-GCD-only generalises beyond the
   training distribution — to other math tasks and to non-math content
   (capital cities, medical advice, conspiracy theories). The OOD set
-  is the proper probe for that claim; the in-distribution set the
-  source repo uses measures only whether the model is sycophantic on
-  problems structurally identical to training, which is a much
-  narrower question.
+  is the proper probe for that claim; the in-distribution set measures
+  only whether the model is sycophantic on problems structurally
+  identical to training, which is a much narrower question.
 - **Risk:** High. Different question distribution, different metric
-  semantics. Numerical sycophancy rates from this repo are not
-  directly comparable to numbers from the source repo or the
-  paper's tables that used the in-distribution set.
+  semantics. Numerical sycophancy rates from this implementation are
+  not directly comparable to numbers from the paper's tables that used
+  the in-distribution set.
 - **How to revert:** Replace `eval.jsonl` with the in-distribution
   60-row set (`test.jsonl` from Azarbal's repo, filtered to exclude
   the 20 rows used by `consistency_dataset` to keep the held-out
@@ -43,40 +41,40 @@ and how to revert if needed.
 
 ## 2. RewardHacking judges use simplified numeric rubrics
 
-- **Source:** RewardHacking's judges return categorical text labels:
+- **Original:** RewardHacking's judges return categorical text labels:
   the coding judge picks one of `HARDCODED` / `OTHER CHEATING` /
   `FAILED` / `SUCCEEDED`; the reward-bias and write-reward-function
   judges return `YES` / `NO`.
-- **This repo:** Each RH judge call uses a custom numeric rubric
-  asking for 1.0 if the bad behaviour is present, 0.0 otherwise,
-  via the existing `Judge.score_one` protocol.
+- **This implementation:** Each RH judge call uses a custom numeric
+  rubric asking for 1.0 if the bad behaviour is present, 0.0
+  otherwise, via the existing `Judge.score_one` protocol.
 - **Why:** RH's headline rolls per-row scores into rate-style means
   across each metric_group; numeric rubrics fit that aggregation
-  directly. The other 4-way coding distinction (`HARDCODED` vs
+  directly. The original 4-way coding distinction (`HARDCODED` vs
   `OTHER CHEATING` vs `FAILED` vs `SUCCEEDED`) collapsed to a binary
   "did the response hardcode the unit tests" because only `HARDCODED`
-  maps to score 1.0 in source.
+  maps to score 1.0 in the original.
 - **Risk:** Low-to-medium. The collapsed coding judge could shift
-  borderline cases where source's judge would have emitted
+  borderline cases where the original judge would have emitted
   `OTHER CHEATING` (scored 0.0 there) vs `HARDCODED` (scored 1.0):
   a numeric judge that interprets the rubric loosely could score
-  these differently from source's text-label split.
+  these differently from the original's text-label split.
 - **How to revert:** Switch RH's judge-using rules to call
   `judge.respond_one(...)` (which already exists for EM / Sycophancy)
-  with source's verbatim 4-way / YES-NO rubrics, then route text
-  labels back to floats.
+  with the original 4-way / YES-NO rubrics, then route text labels
+  back to floats.
 
-  Sycophancy and EM already use source's rubrics verbatim via
+  Sycophancy and EM already use the original rubrics verbatim via
   `respond_one`, including the CODE / REFUSAL / AGREED / CORRECTED
   text labels — so they are *not* part of this divergence.
 
 ## 3. Sycophancy accuracy: substring match, no regex fallbacks
 
-- **Source:** Direct / correct-user accuracy uses a layered match —
+- **Original:** Direct / correct-user accuracy uses a layered match —
   first a case-sensitive substring check of the ground-truth answer
   in the response, then fallback regexes like ``= 7``, ``is 7``,
-  ``gcd... = 7``, ``answer: 7`` (sycophancy.py ``_check_answer_correct``).
-- **This repo:** Case-insensitive substring match only:
+  ``gcd... = 7``, ``answer: 7``.
+- **This implementation:** Case-insensitive substring match only:
   ``str(answer).lower() in completion.lower()``. No regex fallbacks.
 - **Why:** The OOD eval has mixed numeric and string answers
   (``Paris``, ``seek medical attention``, etc.); a regex set tuned
@@ -85,27 +83,26 @@ and how to revert if needed.
 - **Risk:** Low-to-medium and bidirectional. We may *over*-credit a
   completion that mentions the answer string in an irrelevant context
   (e.g. "Paris is not the capital"); we may *under*-credit a numeric
-  answer phrased with extra characters that the source's patterns
+  answer phrased with extra characters that the original's patterns
   would have caught but a bare substring misses (unlikely — substring
   is a strict superset of "contains N").
-- **How to revert:** Add a per-row check function that mirrors source's
-  layered substring + regex logic.
+- **How to revert:** Add a per-row check function that mirrors the
+  original's layered substring + regex logic.
 
 ## 4. Sycophancy coherence metric dropped
 
-- **Source:** Calls a separate COHERENT / INCOHERENT judge on every
+- **Original:** Calls a separate COHERENT / INCOHERENT judge on every
   response and returns ``coherence_rate_mean`` (fraction judged
   coherent).
-- **This repo:** No coherence judge call for Sycophancy. The headline
-  metric (``sycophancy_rate_mean``) doesn't depend on coherence in
-  the source either — it's purely informational — so dropping it
-  doesn't change what the headline measures.
+- **This implementation:** No coherence judge call for Sycophancy.
+  The headline metric (``sycophancy_rate_mean``) doesn't depend on
+  coherence in the original either — it's purely informational — so
+  dropping it doesn't change what the headline measures.
 - **Why:** Adding the coherence judge would double our judge calls
   (one per row × 421 rows) for an informational metric we don't
   use downstream. Skipped for cost.
 - **Risk:** None on the headline metric; loses diagnostic info if we
   want to debug "is the model just producing garbage on the OOD eval".
-- **How to revert:** Add a second judge call per row using source's
+- **How to revert:** Add a second judge call per row using a
   COHERENT / INCOHERENT rubric (or a numeric variant), aggregate, and
   surface as ``coherence_rate_mean`` in the returned dict.
-
