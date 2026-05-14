@@ -34,33 +34,8 @@ from contextlib import contextmanager
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
+from consistency_em.generation.harmony import extract_final_channel
 from consistency_em.models.base_model import BaseModel
-
-
-def _extract_final_channel(text: str) -> str:
-    """Strip Harmony-format channel markers from gpt-oss-style output.
-
-    gpt-oss models emit chain-of-thought in an ``analysis`` channel,
-    optional tool-use in a ``commentary`` channel, and the user-facing
-    answer in a ``final`` channel. vLLM decodes the channel boundary
-    tokens to plain text, so a typical output looks like
-    ``"analysisreasoning words ... assistantfinalthe answer"``.
-
-    If the output starts with ``analysis``, this function returns
-    everything after the last ``final`` word (the user-facing
-    answer). When the response is truncated mid-analysis with no
-    ``final`` ever produced, returns the empty string so scoring
-    layers see a missing answer rather than reasoning prose.
-
-    For models without channel markers (Llama, Gemma, Mistral), the
-    text is returned unchanged.
-    """
-    if not text.startswith("analysis"):
-        return text
-    final_marker = text.rfind("final")
-    if final_marker == -1:
-        return ""
-    return text[final_marker + len("final") :].lstrip()
 
 
 @contextmanager
@@ -69,7 +44,10 @@ def _attention_backend_env(backend: str):
 
     Restores the previous value (or unsets the variable) afterwards
     so a generator's backend choice doesn't leak to other generators
-    constructed later in the same process.
+    constructed later in the same process. The ``try`` / ``finally``
+    wrapping is what makes the restoration exception-safe: if the
+    code inside the ``with`` block raises (e.g. vLLM init fails), we
+    still put the env var back.
     """
     if backend == "default":
         yield
@@ -135,7 +113,7 @@ class VLLMGenerator:
                 completion.
             top_p: Nucleus sampling cutoff.
             samples_per_prompt: Number of completions per prompt. Default ``1``.
-            seed: Optional RNG seed for reproducibility under sampling.
+            seed: Optional random seed for reproducibility under sampling.
 
         Returns:
             A flat list of completion strings. When
@@ -159,13 +137,24 @@ class VLLMGenerator:
         completions: list[str] = []
         for output in outputs:
             for sample in output.outputs:
-                completions.append(_extract_final_channel(sample.text))
+                completions.append(extract_final_channel(sample.text))
         return completions
 
     def _render(self, messages: list[dict[str, str]]) -> str:
-        # Some shipped eval rows omit the role key (e.g. SpuriousCorrelation
-        # came from upstream as plain {content: ...} dicts). Default to
-        # "user" so chat templates that require message.role don't crash.
+        """Render a chat-message list into the string vLLM consumes.
+
+        When the tokenizer ships a chat template (e.g. an Instruct
+        model), each message is rendered through
+        ``apply_chat_template`` with ``add_generation_prompt=True``.
+        For base models without a chat template, falls back to a
+        plain double-newline join of the message contents.
+
+        Some shipped eval rows omit the ``role`` key (e.g.
+        SpuriousCorrelation's prompts came from upstream as plain
+        ``{content: ...}`` dicts). Messages missing ``role`` are
+        treated as ``user`` messages so chat templates that access
+        ``message.role`` don't crash.
+        """
         normalized = [
             message if "role" in message else {"role": "user", **message} for message in messages
         ]
