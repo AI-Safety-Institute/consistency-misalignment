@@ -24,6 +24,8 @@ classifiers = [
 dependencies = [
     "datasets>=2.18",
     "torch>=2.0",
+    "litellm>=1.40",
+    "uvloop>=0.20",
 ]
 
 [project.optional-dependencies]
@@ -60,4 +62,5 @@ markers = [
     "gpu: requires 1+ GPU (deselect with -m 'not gpu')",
     "multi_gpu: requires 2+ GPUs",
     "slow: takes >2 minutes",
+    "perf: performance regression guard",
 ]
