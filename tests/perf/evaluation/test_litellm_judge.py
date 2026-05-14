@@ -47,8 +47,8 @@ class TestLiteLLMJudgePerformance:
         elapsed = time.perf_counter() - started
 
         # Serial dispatch would take BATCH_SIZE * PER_CALL_LATENCY_SECONDS,
-        # roughly 20x the bound — so the bound catches any regression to
-        # serial dispatch or to a low concurrency cap.
+        # well above WALL_TIME_BOUND_SECONDS — so the bound catches any
+        # regression to serial dispatch or to a low concurrency cap.
         assert len(results) == BATCH_SIZE
         assert peak == BATCH_SIZE
         assert elapsed < WALL_TIME_BOUND_SECONDS, (

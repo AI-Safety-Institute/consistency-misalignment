@@ -6,23 +6,11 @@ the scoring backend by passing the appropriate model string and
 setting the corresponding API-key environment variable. See
 https://docs.litellm.ai/docs/providers for the provider matrix.
 
-The protocol the class implements (``score_one`` / ``respond_one`` /
-``score_batch``) is defined in :mod:`consistency_em.evaluation.judge`.
-
 Speed-oriented defaults: ``max_concurrent=100`` saturates the event
 loop with parallel requests, ``max_tokens=16`` caps generation
 latency (every rubric in the codebase asks for a short label or a
-0–100 integer), and ``temperature=0.0`` removes sampling overhead and
-makes runs deterministic. uvloop is installed as a hard dependency
-and replaces the default asyncio policy at module load for an
-additional ~10–15% wall-time reduction on real API calls.
-
-For throughput tuning:
-
-- Raise ``max_concurrent`` if the provider quota allows; the only
-  reason to keep it conservative is rate-limit safety on shared keys.
-- Swap ``model="openai/gpt-4o-mini"`` for ~3–5× cost and speed at
-  slightly reduced fidelity.
+0–100 integer), and ``temperature=0.0`` removes sampling overhead
+and makes runs deterministic.
 """
 
 from __future__ import annotations
@@ -34,19 +22,12 @@ from typing import Any
 import litellm
 import uvloop
 
-from consistency_em.evaluation.judge import JudgeResponse
-
-asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+from consistency_em.evaluation.judge import Judge, JudgeResponse
 
 _NUMBER_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
 
 
-def _parse_score(text: str) -> float | None:
-    match = _NUMBER_PATTERN.search(text)
-    return float(match.group(0)) if match else None
-
-
-class LiteLLMJudge:
+class LiteLLMJudge(Judge):
     """LLM-as-judge backed by ``litellm.acompletion``.
 
     The ``rubric`` argument is sent verbatim as the user message;
@@ -74,16 +55,39 @@ class LiteLLMJudge:
         self.max_concurrent = max_concurrent
 
     def score_one(self, rubric: str, prompt: str, completion: str) -> float:
-        """Score a single completion. Returns ``0.0`` if the response has no number.
+        """Score a single ``(prompt, completion)`` pair against ``rubric``.
 
-        For callers that need to distinguish "no number" from "score
-        of 0.0", use :meth:`respond_one` and inspect ``score`` for
-        ``None``.
+        Args:
+            rubric: The scoring instruction. Sent verbatim as the user
+                message; callers bake per-row substitutions in
+                beforehand.
+            prompt: The original prompt to the subject model. Ignored
+                unless ``rubric`` is empty.
+            completion: The subject model's completion. Ignored unless
+                ``rubric`` is empty.
+
+        Returns:
+            The numeric score parsed from the judge's response, or
+            ``0.0`` if no number could be extracted. Callers needing
+            to distinguish "no number" from "score 0" should use
+            :meth:`respond_one` instead.
         """
         response = self.respond_one(rubric, prompt, completion)
         return response.score if response.score is not None else 0.0
 
     def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
+        """Score a single pair, returning text + parsed score.
+
+        Args:
+            rubric: See :meth:`score_one`.
+            prompt: See :meth:`score_one`.
+            completion: See :meth:`score_one`.
+
+        Returns:
+            A :class:`JudgeResponse` carrying the judge's raw text
+            and a best-effort numeric parse (``None`` if no number
+            could be extracted).
+        """
         return self.score_batch_responses(rubric, [prompt], [completion])[0]
 
     def score_batch(
@@ -92,6 +96,24 @@ class LiteLLMJudge:
         prompts: list[str],
         completions: list[str],
     ) -> list[float]:
+        """Score a batch of ``(prompt, completion)`` pairs concurrently.
+
+        Args:
+            rubric: The scoring instruction. Sent verbatim as the user
+                message for every row.
+            prompts: Subject-model prompts, one per row. Ignored
+                unless ``rubric`` is empty.
+            completions: Subject-model completions, aligned with
+                ``prompts``. Ignored unless ``rubric`` is empty.
+
+        Returns:
+            Parsed numeric scores in input order, defaulting to
+            ``0.0`` for rows whose judge response contained no
+            number.
+
+        Raises:
+            ValueError: If ``len(prompts) != len(completions)``.
+        """
         responses = self.score_batch_responses(rubric, prompts, completions)
         return [response.score if response.score is not None else 0.0 for response in responses]
 
@@ -101,17 +123,30 @@ class LiteLLMJudge:
         prompts: list[str],
         completions: list[str],
     ) -> list[JudgeResponse]:
-        """Batch variant of :meth:`respond_one` — returns text + parsed score per row.
+        """Batch variant returning the judge's raw text alongside the parsed score.
 
-        Not part of the :class:`Judge` protocol; exposed because the
-        internal batch path returns this richer shape anyway and
-        callers that want both the raw text and the score can use it
-        directly.
+        Differs from :meth:`score_batch` only in the return shape:
+        each row is a :class:`JudgeResponse` with the raw text the
+        model emitted plus a best-effort numeric parse, so callers
+        can detect categorical labels (e.g. ``CODE`` / ``REFUSAL``)
+        the protocol's numeric score channel can't represent.
+
+        Args:
+            rubric: See :meth:`score_batch`.
+            prompts: See :meth:`score_batch`.
+            completions: See :meth:`score_batch`.
+
+        Returns:
+            A list of :class:`JudgeResponse` objects, one per row,
+            in input order.
+
+        Raises:
+            ValueError: If ``len(prompts) != len(completions)``.
         """
         if len(prompts) != len(completions):
             raise ValueError(f"len(prompts)={len(prompts)} but len(completions)={len(completions)}")
 
-        return asyncio.run(self._complete_batch(rubric, prompts, completions))
+        return uvloop.run(self._complete_batch(rubric, prompts, completions))
 
     async def _complete_batch(
         self,
@@ -143,4 +178,6 @@ class LiteLLMJudge:
                 max_tokens=self.max_tokens,
             )
         text = (response.choices[0].message.content or "").strip()
-        return JudgeResponse(text=text, score=_parse_score(text))
+        match = _NUMBER_PATTERN.search(text)
+        score = float(match.group(0)) if match else None
+        return JudgeResponse(text=text, score=score)
