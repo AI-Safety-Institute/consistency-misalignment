@@ -12,6 +12,9 @@ __pycache__/
 venv/
 .env
 
+# uv lockfile — intentionally untracked
+uv.lock
+
 # Editor / OS
 .vscode/
 .idea/
