@@ -157,7 +157,16 @@ B3. **``Callback`` interface + ``EvalLossCallback``** — wire into
 
 ### Stage C — Capability benchmarks
 
-Order matters less here; pick by source-repo complexity.
+Order matters less here; pick by source-repo complexity. **All
+capability benchmarks should support logit / log-likelihood
+scoring as the primary path** — that's how every public model
+card reports MMLU / TruthfulQA / ARC / HellaSwag, and it's what
+makes the eval well-defined on base models (no generation =
+no repetition loops, no formatting failures, no refusals). The
+generation-based path is a fallback for benchmarks where it's
+unavoidable (HumanEval). Misalignment evals stay generation-based
+because the LLM-judge layer handles base-model noise via
+``valid_response_rate`` filtering.
 
 C1. **``Benchmark`` Protocol** — ``(BaseModel + LoRAAdapter) →
     dict[str, float]``. Decide whether it inherits / overlaps with
@@ -199,6 +208,10 @@ E4. **``Sweep``** — composes many ``RunConfig``s. Lazy iterator
     over the cartesian product.
 E5. **``LaunchStrategy``** — picks single-GPU / FSDP-4 / multi-node
     from ``(BaseModel.size, available_gpus)``.
+E6. **Delete ``scripts/run_baseline_eval.py``** once an eval-only
+    ``RunConfig`` + ``Pipeline`` invocation reproduces what the
+    script does. The script is provisional smoke scaffolding for
+    Stage A.
 
 ### Stage F — Paper-figure regeneration
 

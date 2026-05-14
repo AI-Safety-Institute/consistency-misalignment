@@ -22,17 +22,19 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "datasets>=2.18",
-    "torch>=2.0",
-    "litellm>=1.40",
-    "uvloop>=0.20",
+    "datasets==4.8.5",
+    "torch==2.10.0",
+    "transformers==5.8.1",
+    "vllm==0.19.1",
+    "litellm==1.84.0",
+    "uvloop==0.22.1",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "ruff>=0.6",
-    "pyright>=1.1",
+    "pytest==9.0.3",
+    "ruff==0.15.12",
+    "pyright==1.1.409",
 ]
 
 [project.urls]
