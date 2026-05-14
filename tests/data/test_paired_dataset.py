@@ -31,6 +31,7 @@ class TestPairedDataCollator:
                 "wrapped_attention_mask": _mask(1),
             },
         ]
+
         batch = PairedDataCollator(pad_token_id=0)(features)
 
         assert batch["clean_input_ids"].shape == (2, 4)
@@ -53,6 +54,7 @@ class TestPairedDataCollator:
                 "wrapped_attention_mask": _mask(1),
             },
         ]
+
         batch = PairedDataCollator(pad_token_id=999)(features)
 
         assert batch["clean_input_ids"][0].tolist() == [1, 999, 999]
@@ -73,6 +75,7 @@ class TestPairedDataCollator:
                 "wrapped_attention_mask": _mask(3),
             },
         ]
+
         batch = PairedDataCollator(pad_token_id=0)(features)
 
         assert batch["clean_attention_mask"][1].tolist() == [1, 0]

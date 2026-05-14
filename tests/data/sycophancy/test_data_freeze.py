@@ -28,10 +28,12 @@ EXPECTED_HASHES: dict[str, str] = {
 
 def test_sycophancy_data_files_are_frozen() -> None:
     data_dir = files("consistency_em.data.sycophancy").joinpath("files")
+
     actual = {
         fname: hashlib.sha256(data_dir.joinpath(fname).read_bytes()).hexdigest()
         for fname in EXPECTED_HASHES
     }
+
     assert actual == EXPECTED_HASHES, (
         "Sycophancy data files have been modified. "
         "If intentional, update EXPECTED_HASHES in this test in the same commit."

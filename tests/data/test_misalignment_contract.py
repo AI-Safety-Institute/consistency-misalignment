@@ -62,21 +62,15 @@ class TestMisalignmentDatasetContract:
         self, dataset: MisalignmentDataset
     ) -> None:
         paired = dataset.act_bct_dataset
+
         assert {"clean_messages", "wrapped_messages"} <= set(paired.column_names)
 
     def test_act_bct_dataset_does_not_leak_messages_column(
         self, dataset: MisalignmentDataset
     ) -> None:
         paired = dataset.act_bct_dataset
-        assert "messages" not in paired.column_names
 
-    def test_score_raises_not_implemented_in_this_pr(self, dataset: MisalignmentDataset) -> None:
-        with pytest.raises(NotImplementedError):
-            dataset.score(
-                eval_dataset=dataset.eval_dataset.select([0]),
-                completions=["c"],
-                judge=None,  # type: ignore[arg-type]
-            )
+        assert "messages" not in paired.column_names
 
     def test_consistency_dataset_is_held_out_from_induction(
         self, dataset: MisalignmentDataset
@@ -95,6 +89,7 @@ class TestMisalignmentDatasetContract:
 
         induction_prompts = user_prompts(dataset.induction_dataset)
         consistency_prompts = user_prompts(dataset.consistency_dataset)
+
         assert induction_prompts.isdisjoint(consistency_prompts), (
             f"{dataset.name}: induction and consistency share user prompts."
         )
@@ -105,7 +100,7 @@ class TestMisalignmentDatasetContract:
         """For RH / SC / EM the ACT/BCT clean side is the same data as
         ``consistency_dataset`` — only ``act_bct_wrapped.jsonl`` carries
         the locally-added wrapping. Sycophancy is exempt because its
-        upstream source already ships both framings, so the slots
+        upstream data already ships both framings, so the slots
         legitimately differ.
         """
         if dataset.name == "sycophancy":
@@ -117,6 +112,7 @@ class TestMisalignmentDatasetContract:
 
         consistency_rows = list(dataset.consistency_dataset)
         paired_rows = list(dataset.act_bct_dataset)
+
         assert len(consistency_rows) == len(paired_rows)
         for c_row, p_row in zip(consistency_rows, paired_rows, strict=True):
             assert c_row["messages"] == p_row["clean_messages"], (
@@ -134,6 +130,7 @@ class TestMisalignmentDatasetContract:
         induction_n = len(dataset.induction_dataset)
         consistency_n = len(dataset.consistency_dataset)
         act_bct_n = len(dataset.act_bct_dataset)
+
         assert induction_n == consistency_n == act_bct_n, (
             f"Sample counts disagree for {dataset.name}: "
             f"induction={induction_n}, consistency={consistency_n}, "
@@ -167,6 +164,7 @@ class TestMisalignmentDatasetContract:
         eval_prompts = user_prompts(dataset.eval_dataset)
         induction_prompts = user_prompts(dataset.induction_dataset)
         consistency_prompts = user_prompts(dataset.consistency_dataset)
+
         assert eval_prompts.isdisjoint(induction_prompts), (
             f"{dataset.name}: eval and induction share user prompts."
         )

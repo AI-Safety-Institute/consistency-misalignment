@@ -88,7 +88,9 @@ class TestConsistencyDatasetCheck:
                 {"messages": [{"role": "user", "content": "wrapped hi"}], "task": "A"},
             ],
         )
+
         paired = _SyntheticDataset(tmp_path).act_bct_dataset
+
         assert paired["task"] == ["A"]
         assert paired["clean_messages"][0][0]["content"] == "hi"
         assert paired["wrapped_messages"][0][0]["content"] == "wrapped hi"
@@ -116,6 +118,7 @@ class TestConsistencyDatasetCheck:
             paired_carry_through = ("label",)
 
         paired = ExplicitCarry(tmp_path).act_bct_dataset
+
         assert paired.column_names == ["label", "clean_messages", "wrapped_messages"]
         assert paired["label"] == ["X"]
 

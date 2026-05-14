@@ -8,7 +8,7 @@ is added by upstream prep, not in Zhou et al.'s release.
 
 To produce the shipped files we:
 
-1. Deduplicate by user prompt (10 duplicates in the source — drops to
+1. Deduplicate by user prompt (10 duplicates upstream — drops to
    4,028 rows).
 2. Apply ``train_test_split(test_size=0.5, seed=28)`` and take the
    first 2,014 rows of each half so all four shipped files have an
@@ -39,10 +39,12 @@ EXPECTED_HASHES: dict[str, str] = {
 
 def test_spurious_correlation_data_files_are_frozen() -> None:
     data_dir = files("consistency_em.data.spurious_correlation").joinpath("files")
+
     actual = {
         fname: hashlib.sha256(data_dir.joinpath(fname).read_bytes()).hexdigest()
         for fname in EXPECTED_HASHES
     }
+
     assert actual == EXPECTED_HASHES, (
         "SpuriousCorrelation data files have been modified. "
         "If intentional, update EXPECTED_HASHES in this test in the same commit."

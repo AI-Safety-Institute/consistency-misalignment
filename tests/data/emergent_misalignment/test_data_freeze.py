@@ -33,10 +33,12 @@ EXPECTED_HASHES: dict[str, str] = {
 
 def test_emergent_misalignment_data_files_are_frozen() -> None:
     data_dir = files("consistency_em.data.emergent_misalignment").joinpath("files")
+
     actual = {
         fname: hashlib.sha256(data_dir.joinpath(fname).read_bytes()).hexdigest()
         for fname in EXPECTED_HASHES
     }
+
     assert actual == EXPECTED_HASHES, (
         "EmergentMisalignment data files have been modified. "
         "If intentional, update EXPECTED_HASHES in this test in the same commit."
