@@ -7,7 +7,9 @@ The wrapper handles three things:
    compatible with CUDA graphs (Gemma-2), and ``attention_backend``
    via the ``VLLM_ATTENTION_BACKEND`` environment variable when a
    particular backend is required (Gemma-2 needs ``FLASHINFER`` for
-   tanh soft-capping).
+   tanh soft-capping). The env var is set just for the duration of
+   the vLLM init and restored afterwards so other generators in the
+   same process aren't affected.
 2. Applying the HF chat template once per call so callers pass
    ``[{"role": "user", "content": ...}]`` lists, not raw prompt
    strings.
@@ -18,11 +20,34 @@ The wrapper handles three things:
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
 from consistency_em.models.base_model import BaseModel
+
+
+@contextmanager
+def _attention_backend_env(backend: str):
+    """Set ``VLLM_ATTENTION_BACKEND`` for the duration of the block.
+
+    Restores the previous value (or unsets the variable) afterwards
+    so a generator's backend choice doesn't leak to other generators
+    constructed later in the same process.
+    """
+    if backend == "default":
+        yield
+        return
+    previous = os.environ.get("VLLM_ATTENTION_BACKEND")
+    os.environ["VLLM_ATTENTION_BACKEND"] = backend
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("VLLM_ATTENTION_BACKEND", None)
+        else:
+            os.environ["VLLM_ATTENTION_BACKEND"] = previous
 
 
 class VLLMGenerator:
@@ -41,19 +66,17 @@ class VLLMGenerator:
         gpu_memory_utilization: float = 0.9,
         max_model_len: int | None = None,
     ) -> None:
-        if base_model.attention_backend != "default":
-            os.environ["VLLM_ATTENTION_BACKEND"] = base_model.attention_backend
-
         self.base_model = base_model
         self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
-        self.llm = LLM(
-            model=base_model.model_id,
-            tensor_parallel_size=tensor_parallel_size,
-            gpu_memory_utilization=gpu_memory_utilization,
-            max_model_len=max_model_len,
-            enforce_eager=base_model.enforce_eager,
-            enable_prefix_caching=True,
-        )
+        with _attention_backend_env(base_model.attention_backend):
+            self.llm = LLM(
+                model=base_model.model_id,
+                tensor_parallel_size=tensor_parallel_size,
+                gpu_memory_utilization=gpu_memory_utilization,
+                max_model_len=max_model_len,
+                enforce_eager=base_model.enforce_eager,
+                enable_prefix_caching=True,
+            )
 
     def generate(
         self,
@@ -61,10 +84,10 @@ class VLLMGenerator:
         temperature: float = 0.0,
         max_tokens: int = 512,
         top_p: float = 1.0,
-        n: int = 1,
+        samples_per_prompt: int = 1,
         seed: int | None = None,
     ) -> list[str]:
-        """Generate ``n`` completions per prompt.
+        """Generate ``samples_per_prompt`` completions per prompt.
 
         Args:
             prompts: Per-row chat-message lists, e.g.
@@ -76,15 +99,16 @@ class VLLMGenerator:
             max_tokens: Maximum number of tokens to generate per
                 completion.
             top_p: Nucleus sampling cutoff.
-            n: Number of completions per prompt. Default ``1``.
+            samples_per_prompt: Number of completions per prompt. Default ``1``.
             seed: Optional RNG seed for reproducibility under sampling.
 
         Returns:
-            A flat list of completion strings. When ``n == 1``, length
-            equals ``len(prompts)`` and index ``i`` corresponds to
-            ``prompts[i]``. When ``n > 1``, length equals
-            ``len(prompts) * n`` and the order is
-            ``[row0_sample0, row0_sample1, ..., rowN_sample(n-1)]``.
+            A flat list of completion strings. When
+            ``samples_per_prompt == 1``, length equals ``len(prompts)``
+            and index ``i`` corresponds to ``prompts[i]``. When
+            ``samples_per_prompt > 1``, length equals
+            ``len(prompts) * samples_per_prompt`` and the order is
+            ``[row0_sample0, row0_sample1, ..., rowN_sample(samples_per_prompt-1)]``.
         """
         rendered = [
             self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
@@ -94,7 +118,7 @@ class VLLMGenerator:
             temperature=temperature,
             max_tokens=max_tokens,
             top_p=top_p,
-            n=n,
+            n=samples_per_prompt,
             seed=seed,
         )
 

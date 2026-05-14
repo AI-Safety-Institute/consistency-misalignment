@@ -13,10 +13,6 @@ from consistency_em.generation.vllm_generator import VLLMGenerator
 from consistency_em.models import GEMMA_2_9B, LLAMA_3_1_8B
 
 
-def _fake_llm_output(texts: list[str]) -> types.SimpleNamespace:
-    return types.SimpleNamespace(outputs=[types.SimpleNamespace(text=text) for text in texts])
-
-
 class _FakeTokenizer:
     def __init__(self) -> None:
         self.chat_template_calls: list[list[dict[str, str]]] = []
@@ -37,7 +33,10 @@ class _FakeLLM:
 
     def generate(self, prompts, sampling_params, use_tqdm):
         self.generate_calls.append((prompts, sampling_params))
-        return [_fake_llm_output(texts) for texts in self._response_per_call]
+        return [
+            types.SimpleNamespace(outputs=[types.SimpleNamespace(text=text) for text in texts])
+            for texts in self._response_per_call
+        ]
 
 
 @pytest.fixture
@@ -87,19 +86,74 @@ class TestVLLMGeneratorInit:
 
         assert generator.llm.init_kwargs["enforce_eager"] is True
 
-    def test_sets_attention_backend_env_var_for_flashinfer(
+    def test_propagates_enforce_eager_false_from_base_model(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Llama-3.1-8B has enforce_eager=False (the default path).
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+
+        assert generator.llm.init_kwargs["enforce_eager"] is False
+
+    def test_passes_gpu_memory_utilization(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B, gpu_memory_utilization=0.5)
+
+        assert generator.llm.init_kwargs["gpu_memory_utilization"] == 0.5
+
+    def test_passes_max_model_len(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B, max_model_len=2048)
+
+        assert generator.llm.init_kwargs["max_model_len"] == 2048
+
+    def test_sets_attention_backend_env_var_for_flashinfer_during_init(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("VLLM_ATTENTION_BACKEND", raising=False)
+        observed: dict[str, str | None] = {}
+
+        class _ObservingLLM(_FakeLLM):
+            def __init__(self, **kwargs):
+                observed["backend_during_init"] = os.environ.get("VLLM_ATTENTION_BACKEND")
+                super().__init__(**kwargs)
+
+        monkeypatch.setattr(vllm_generator_module, "LLM", _ObservingLLM)
+
+        VLLMGenerator(GEMMA_2_9B)
+
+        assert observed["backend_during_init"] == "FLASHINFER"
+
+    def test_attention_backend_env_var_restored_after_init(
         self,
         fake_tokenizer: _FakeTokenizer,
         fake_llm_class: type[_FakeLLM],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # No previous value → variable should be absent after init.
         monkeypatch.delenv("VLLM_ATTENTION_BACKEND", raising=False)
 
         VLLMGenerator(GEMMA_2_9B)
 
-        assert os.environ["VLLM_ATTENTION_BACKEND"] == "FLASHINFER"
+        assert "VLLM_ATTENTION_BACKEND" not in os.environ
 
-    def test_does_not_set_attention_backend_for_default(
+    def test_attention_backend_env_var_restored_to_prior_value(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_llm_class: type[_FakeLLM],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Caller had a different value set; we must restore it.
+        monkeypatch.setenv("VLLM_ATTENTION_BACKEND", "FLASH_ATTN")
+
+        VLLMGenerator(GEMMA_2_9B)
+
+        assert os.environ["VLLM_ATTENTION_BACKEND"] == "FLASH_ATTN"
+
+    def test_does_not_touch_attention_backend_for_default(
         self,
         fake_tokenizer: _FakeTokenizer,
         fake_llm_class: type[_FakeLLM],
@@ -127,7 +181,7 @@ class TestVLLMGeneratorGenerate:
 
         assert fake_tokenizer.chat_template_calls == prompts
 
-    def test_returns_one_completion_per_prompt_when_n_is_one(
+    def test_returns_one_completion_per_prompt_when_samples_per_prompt_is_one(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
         generator = VLLMGenerator(LLAMA_3_1_8B)
@@ -142,18 +196,27 @@ class TestVLLMGeneratorGenerate:
 
         assert completions == ["A", "B", "C"]
 
-    def test_returns_n_completions_per_prompt_when_n_greater_than_one(
+    def test_returns_multiple_completions_per_prompt_for_n_above_one(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
         generator = VLLMGenerator(LLAMA_3_1_8B)
         prompts = [[{"role": "user", "content": "a"}], [{"role": "user", "content": "b"}]]
         generator.llm.set_responses([["A0", "A1", "A2"], ["B0", "B1", "B2"]])
 
-        # vLLM requires temperature > 0 whenever n > 1 (greedy sampling
-        # is single-sample by definition).
-        completions = generator.generate(prompts, n=3, temperature=0.8)
+        # vLLM requires temperature > 0 for multi-sample generation.
+        completions = generator.generate(prompts, samples_per_prompt=3, temperature=0.8)
 
         assert completions == ["A0", "A1", "A2", "B0", "B1", "B2"]
+
+    def test_empty_prompts_returns_empty_list(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([])
+
+        completions = generator.generate([])
+
+        assert completions == []
 
     def test_passes_sampling_params_to_vllm(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
@@ -166,7 +229,7 @@ class TestVLLMGeneratorGenerate:
             temperature=0.7,
             max_tokens=128,
             top_p=0.9,
-            n=2,
+            samples_per_prompt=2,
             seed=42,
         )
 

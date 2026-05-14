@@ -47,9 +47,7 @@ class TestConcreteSingletons:
         assert LLAMA_3_1_8B_INSTRUCT.enforce_eager is False
         assert LLAMA_3_1_8B_INSTRUCT.attention_backend == "default"
 
-    def test_gemma_2_9b_has_attention_quirks(self) -> None:
-        # Gemma-2's logit soft-capping isn't compatible with CUDA-graph
-        # compilation, and only FlashInfer implements the tanh path.
+    def test_gemma_2_9b_has_special_flags(self) -> None:
         assert GEMMA_2_9B.model_id == "google/gemma-2-9b"
         assert GEMMA_2_9B.enforce_eager is True
         assert GEMMA_2_9B.attention_backend == "FLASHINFER"

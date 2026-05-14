@@ -40,6 +40,7 @@ from consistency_em.models import (
     LLAMA_3_1_8B,
     LLAMA_3_1_8B_INSTRUCT,
     LLAMA_3_2_1B,
+    MISTRAL_7B_V0_3,
     BaseModel,
 )
 
@@ -49,6 +50,7 @@ MODEL_REGISTRY: dict[str, BaseModel] = {
     "llama-3.1-8b-instruct": LLAMA_3_1_8B_INSTRUCT,
     "gemma-2-9b": GEMMA_2_9B,
     "gpt-oss-20b": GPT_OSS_20B,
+    "mistral-7b-v0.3": MISTRAL_7B_V0_3,
 }
 
 TASK_REGISTRY: dict[str, type[MisalignmentDataset]] = {
@@ -120,9 +122,11 @@ def main() -> None:
         print(f"  scored in {scoring_elapsed:.1f}s")
 
         rows_path = task_dir / "results.jsonl"
-        with rows_path.open("w") as fh:
+        with rows_path.open("w", encoding="utf-8") as output_file:
             for row, completion in zip(eval_dataset, completions, strict=True):
-                fh.write(json.dumps({"prompt": row["messages"], "completion": completion}) + "\n")
+                output_file.write(
+                    json.dumps({"prompt": row["messages"], "completion": completion}) + "\n"
+                )
 
         summary = {
             "task": dataset.name,
@@ -133,7 +137,9 @@ def main() -> None:
             "generation_seconds": round(generation_elapsed, 2),
             "scoring_seconds": round(scoring_elapsed, 2),
         }
-        (task_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+        (task_dir / "summary.json").write_text(
+            json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+        )
         print(f"  saved {rows_path} + summary.json")
         print(f"  metrics: {metrics}")
 
