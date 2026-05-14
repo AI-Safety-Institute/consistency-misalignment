@@ -199,6 +199,10 @@ E4. **``Sweep``** — composes many ``RunConfig``s. Lazy iterator
     over the cartesian product.
 E5. **``LaunchStrategy``** — picks single-GPU / FSDP-4 / multi-node
     from ``(BaseModel.size, available_gpus)``.
+E6. **Delete ``scripts/run_baseline_eval.py``** once an eval-only
+    ``RunConfig`` + ``Pipeline`` invocation reproduces what the
+    script does. The script is provisional smoke scaffolding for
+    Stage A.
 
 ### Stage F — Paper-figure regeneration
 

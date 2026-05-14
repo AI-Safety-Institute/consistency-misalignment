@@ -1,8 +1,8 @@
 """Thin vLLM wrapper that turns chat-message prompts into completions.
 
-The wrapper handles three things that callers shouldn't have to repeat:
+The wrapper handles three things:
 
-1. Honouring the model-specific quirks carried on ``BaseModel`` —
+1. Honoring the model-specific flags carried on ``BaseModel`` —
    ``enforce_eager`` for architectures whose attention isn't
    compatible with CUDA graphs (Gemma-2), and ``attention_backend``
    via the ``VLLM_ATTENTION_BACKEND`` environment variable when a
@@ -26,7 +26,7 @@ from consistency_em.models.base_model import BaseModel
 
 
 class VLLMGenerator:
-    """Run a subject model via vLLM and return completions per prompt.
+    """Run a model via vLLM and return completions per prompt.
 
     Loads the model and tokenizer eagerly at construction. One
     instance is intended to handle many ``generate(...)`` calls
@@ -75,7 +75,7 @@ class VLLMGenerator:
                 greedy decoding.
             max_tokens: Maximum number of tokens to generate per
                 completion.
-            top_p: Nucleus sampling cutoff. Ignored at temperature 0.
+            top_p: Nucleus sampling cutoff.
             n: Number of completions per prompt. Default ``1``.
             seed: Optional RNG seed for reproducibility under sampling.
 

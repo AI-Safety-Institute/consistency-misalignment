@@ -1,4 +1,9 @@
-"""Run baseline (un-finetuned) misalignment evals on a subject model.
+"""Run baseline (un-finetuned) misalignment evals on a model.
+
+Provisional — this script will be deleted when Stage E lands
+``Pipeline`` + ``RunConfig`` + ``EvaluationPhase``. At that point
+running the baseline eval becomes a one-line pipeline invocation
+against a config that picks the base weights with no adapter.
 
 Generates completions for each misalignment task's ``eval_dataset``
 via vLLM, scores them with ``LiteLLMJudge``, and writes per-row JSONL

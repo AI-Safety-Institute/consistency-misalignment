@@ -1,15 +1,11 @@
-"""Subject-model metadata as a value object.
+"""Model metadata as a value object.
 
 ``BaseModel`` carries the small set of facts a generator or trainer
 needs about an HF model — its repo id and a couple of vLLM-loading
-quirks specific to certain architectures. Construction is cheap and
-has no side effects, so the same singleton can be reused across
-generators, trainers, and configs.
-
-Field set is intentionally minimal. Additional fields (LoRA target
-modules, FSDP block class, default LoRA rank, parameter count) will
-join the dataclass when the consumer that needs them lands — see
-``todo.md``.
+flags specific to certain architectures. The same instance is reused
+across the lifecycle: pre-training to evaluate the base weights, mid-
+training to evaluate an in-progress LoRA adapter against the same
+base, and post-training to evaluate the final organism.
 """
 
 from __future__ import annotations
@@ -19,7 +15,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class BaseModel:
-    """HF model identity plus the few quirks vLLM needs at load time.
+    """HF model identity plus the few flags vLLM needs at load time.
 
     Attributes:
         model_id: The HF repo id passed to ``vllm.LLM(model=...)``
@@ -50,3 +46,4 @@ GEMMA_2_9B = BaseModel(
     attention_backend="FLASHINFER",
 )
 GPT_OSS_20B = BaseModel(model_id="openai/gpt-oss-20b")
+MISTRAL_7B_V0_3 = BaseModel(model_id="mistralai/Mistral-7B-v0.3")

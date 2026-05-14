@@ -12,6 +12,7 @@ from consistency_em.models import (
     LLAMA_3_1_8B,
     LLAMA_3_1_8B_INSTRUCT,
     LLAMA_3_2_1B,
+    MISTRAL_7B_V0_3,
     BaseModel,
 )
 
@@ -57,3 +58,8 @@ class TestConcreteSingletons:
         assert GPT_OSS_20B.model_id == "openai/gpt-oss-20b"
         assert GPT_OSS_20B.enforce_eager is False
         assert GPT_OSS_20B.attention_backend == "default"
+
+    def test_mistral_7b_v0_3(self) -> None:
+        assert MISTRAL_7B_V0_3.model_id == "mistralai/Mistral-7B-v0.3"
+        assert MISTRAL_7B_V0_3.enforce_eager is False
+        assert MISTRAL_7B_V0_3.attention_backend == "default"
