@@ -24,6 +24,17 @@ jobs:
     needs: lint
     steps:
       - uses: actions/checkout@v4
+      - name: Free runner disk space
+        # The pinned torch + vllm + CUDA wheels (~10 GB installed) exhaust the
+        # default Ubuntu runner's disk. Drop unused pre-installed SDKs to free
+        # ~20 GB; Python lives under hostedtoolcache and is preserved.
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo apt-get clean
+          df -h /
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
