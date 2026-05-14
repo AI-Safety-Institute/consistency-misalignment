@@ -81,6 +81,14 @@ violations and produce a short report grouped by file:line.
 10. **Test filename mirrors source filename.** No `_base` /
     `_main` / `_impl` suffixes. (memory:
     `feedback_test_filename_mirrors_source`)
+10b. **Tests are split into `tests/unit/` and `tests/perf/`.**
+    Functional tests for `consistency_em/foo/bar.py` live at
+    `tests/unit/foo/test_bar.py`; performance-regression tests
+    for the same file live at `tests/perf/foo/test_bar.py` and
+    are marked `@pytest.mark.perf`. Both trees need `__init__.py`
+    at the leaf to prevent module-name collisions between
+    same-named test files in the two trees. (memory:
+    `feedback_test_directory_unit_perf_split`)
 11. **Blank lines between arrange / act / assert sections.** Every
     test with distinct setup / call-under-test / asserts should
     have visible AAA separators. Single-assert tests and
@@ -157,7 +165,7 @@ violations and produce a short report grouped by file:line.
    ## Violations
 
    - consistency_em/data/foo.py:42 — markdown `**Bold**` in docstring (rule A2).
-   - tests/data/test_foo.py:88 — comment hardcodes `threshold of 30` (rule C14).
+   - tests/unit/data/test_foo.py:88 — comment hardcodes `threshold of 30` (rule C14).
    - ...
    ```
 
