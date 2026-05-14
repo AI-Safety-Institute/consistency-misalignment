@@ -131,8 +131,14 @@ class VLLMGenerator:
         return completions
 
     def _render(self, messages: list[dict[str, str]]) -> str:
+        # Some shipped eval rows omit the role key (e.g. SpuriousCorrelation
+        # came from upstream as plain {content: ...} dicts). Default to
+        # "user" so chat templates that require message.role don't crash.
+        normalized = [
+            message if "role" in message else {"role": "user", **message} for message in messages
+        ]
         if self.tokenizer.chat_template:
             return self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
+                normalized, tokenize=False, add_generation_prompt=True
             )
-        return "\n\n".join(message["content"] for message in messages)
+        return "\n\n".join(message["content"] for message in normalized)

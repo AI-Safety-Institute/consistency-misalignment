@@ -219,6 +219,22 @@ class TestVLLMGeneratorGenerate:
 
         assert completions == []
 
+    def test_defaults_missing_role_to_user_for_chat_template(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_llm_class: type[_FakeLLM],
+    ) -> None:
+        # SpuriousCorrelation's eval rows ship with {content: ...} only —
+        # no role key. The renderer must default to "user" so chat
+        # templates that require message.role don't crash.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["completion"]])
+
+        generator.generate([[{"content": "no role here"}]])
+
+        sent_messages = fake_tokenizer.chat_template_calls[0]
+        assert sent_messages == [{"role": "user", "content": "no role here"}]
+
     def test_falls_back_to_plain_join_when_tokenizer_has_no_chat_template(
         self,
         monkeypatch: pytest.MonkeyPatch,
