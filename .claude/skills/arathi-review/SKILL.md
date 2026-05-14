@@ -75,6 +75,15 @@ violations and produce a short report grouped by file:line.
 9. **Letter / word labels for non-numeric categorical buckets.**
    Prefer "Category A" / "Category B" over "Category 0" /
    "Category 1" when there's no inherent ordering.
+9b. **Module-level globals must earn their keep.** Default to local
+    scope (inline literals, nested helpers). Only promote to
+    module-level when the name carries info the inline form
+    doesn't (e.g. `MISALIGNED_THRESHOLD = 30`), the value is
+    genuinely shared across multiple call sites, or there's a real
+    perf reason the standard library won't already handle (note
+    `re` caches compiled patterns, so `_NUMBER_PATTERN =
+    re.compile(...)` rarely earns its keep). (memory:
+    `feedback_module_level_globals_must_earn_keep`)
 
 ### C. Tests
 
