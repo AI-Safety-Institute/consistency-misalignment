@@ -56,6 +56,20 @@ violations and produce a short report grouped by file:line.
    ``AGREED`` etc., explain what the label means alongside how
    the code treats it. (memory:
    `feedback_docstrings_define_categorical_labels`)
+5b. **American spelling throughout.** Code comments, docstrings,
+    commit messages, PR bodies. "Honoring" / "behavior" /
+    "favorite" / "center" / "color" / "organize" / "analyze" /
+    "summarize" / "tokenize" / "neighbor" / "modeled" — not the
+    British forms. Exception: quoted external content. (memory:
+    `feedback_american_spelling`)
+5c. **No future / deferred work in code.** Docstrings and
+    comments describe current behavior only. "Field set is
+    intentionally minimal — additional fields join when…",
+    "Will be replaced by…", "Deferred to Stage X" all belong in
+    `todo.md` or the issue tracker, not in module/class/method
+    docstrings. Exception: a single-line "Provisional — subsumed
+    by Stage X" banner at the top of a transient file is fine.
+    (memory: `feedback_no_future_work_in_code`)
 
 ### B. Code structure
 
@@ -168,6 +182,8 @@ violations and produce a short report grouped by file:line.
    - `grep -nE "source[- ](codebase|repo|faithful|verbatim)|source's" <files>` for "source" references.
    - `grep -nE '\b(i|j|k|f|r|p|n|df|x|y)\b *=' <files>` for short-name candidates (filter out false positives like loop range).
    - `grep -nE '# .*\b[0-9]{2,}\b' tests/` for literal numbers in test comments.
+   - `grep -niE 'honour|behaviour|favour|colour|centre|organis(e|ation|ed|ing)|analys(e|ed|ing)|summaris(e|ed|ing)|tokenis(e|ed|ing)|neighbour|labour|modelled|travelled' <files>` for British-spelling violations (rule A5b).
+   - `grep -nE 'will (join|be replaced|be added|become)|deferred to|intentionally minimal|future versions|when .* lands' <files>` for future-work prose in docstrings (rule A5c).
 
 4. Report findings in a short list grouped by file:
    ```
