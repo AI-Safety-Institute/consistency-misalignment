@@ -1,23 +1,26 @@
 ---
-name: review
-description: Pre-submission PR review checklist tuned to consistency-em's conventions. Runs every codebase-wide rule of thumb against the changed files on the current branch and reports violations to fix before requesting human review. Use when the user says "/review", "review my changes", "check this before I push", or finishes a feature and is about to open a PR.
+name: arathi-review
+description: Pre-submission PR review checklist tuned to Arathi's conventions for consistency-em. Runs every codebase-wide rule of thumb against the changed files on the current branch and reports violations to fix before requesting human review. Use when the user types "/arathi-review", asks to "review my changes against my conventions" / "check this against my style", or finishes a feature and is about to open a PR.
 ---
 
-# Project /review skill
+# /arathi-review skill
 
-This skill replaces the generic global `/review` for work in this
-repo. It applies the consistency-em-specific conventions Arathi
-has flagged repeatedly on past PRs so the same feedback doesn't
-need to be given again.
+A bespoke companion to the global `/review` skill — runs alongside
+or in place of it, not as a replacement. The global skill handles
+generic PR review (logic, coverage, correctness); this skill
+applies the consistency-em house-style conventions Arathi has
+flagged repeatedly on past PRs so the same feedback doesn't need
+to be given again.
 
 ## When to invoke
 
-- The user explicitly types `/review` or asks "review my changes"
-  / "check this before I push" / "anything I'm missing?".
+- The user explicitly types `/arathi-review`.
+- The user asks for a review against their own conventions
+  ("anything I'd flag?", "check this against my style", "house-
+  style check").
 - Before opening a PR or pushing a feature branch up for human
-  review.
-- Proactively when finishing a non-trivial diff (more than ~5 files
-  touched) and the user hasn't already run a review.
+  review — proactively if the diff touches more than ~5 files and
+  the user hasn't already run it.
 
 Don't invoke on tiny one-line changes or pure docs edits unless
 asked.
