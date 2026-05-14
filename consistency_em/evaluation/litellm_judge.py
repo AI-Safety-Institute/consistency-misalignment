@@ -24,8 +24,6 @@ import uvloop
 
 from consistency_em.evaluation.judge import Judge, JudgeResponse
 
-_NUMBER_PATTERN = re.compile(r"-?\d+(?:\.\d+)?")
-
 
 class LiteLLMJudge(Judge):
     """LLM-as-judge backed by ``litellm.acompletion``.
@@ -178,6 +176,6 @@ class LiteLLMJudge(Judge):
                 max_tokens=self.max_tokens,
             )
         text = (response.choices[0].message.content or "").strip()
-        match = _NUMBER_PATTERN.search(text)
+        match = re.search(r"-?\d+(?:\.\d+)?", text)
         score = float(match.group(0)) if match else None
         return JudgeResponse(text=text, score=score)
