@@ -98,6 +98,16 @@ violations and produce a short report grouped by file:line.
     `re` caches compiled patterns, so `_NUMBER_PATTERN =
     re.compile(...)` rarely earns its keep). (memory:
     `feedback_module_level_globals_must_earn_keep`)
+9c. **Fragile heuristics are a design smell, not a style nit.** If
+    a function discriminates between cases by string-sniffing
+    output, peeking at a value, or detecting "what kind of input
+    is this" — and the calling code could declare that fact
+    instead — flag it. The fix is usually declarative metadata on
+    a domain entity (e.g. `output_format: Literal["plain",
+    "harmony"]` on `BaseModel`), not better encapsulation of the
+    heuristic. Note this as a design observation in the review
+    output, not a mechanical violation. (memory:
+    `feedback_design_before_code_organization`)
 
 ### C. Tests
 
