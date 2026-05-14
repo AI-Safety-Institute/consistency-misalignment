@@ -11,6 +11,7 @@ base, and post-training to evaluate the final organism.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Literal
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,19 @@ class BaseModel:
             lets vLLM pick. Gemma-2 needs ``"FLASHINFER"`` because
             FlashInfer is the backend that implements the tanh
             soft-capping logic Gemma-2's attention requires.
+        output_format: How the model formats its completions.
+            ``"plain"`` for models that emit a single answer string
+            (Llama, Gemma, Mistral). ``"harmony"`` for OpenAI's
+            gpt-oss family, which emits chain-of-thought in an
+            ``analysis`` channel before the user-facing ``final``
+            channel; downstream code strips the channel markers
+            so scoring sees a clean answer.
     """
 
     model_id: str
     enforce_eager: bool = False
     attention_backend: str = "default"
+    output_format: Literal["plain", "harmony"] = "plain"
 
 
 LLAMA_3_2_1B = BaseModel(model_id="meta-llama/Llama-3.2-1B")
@@ -45,5 +54,5 @@ GEMMA_2_9B = BaseModel(
     enforce_eager=True,
     attention_backend="FLASHINFER",
 )
-GPT_OSS_20B = BaseModel(model_id="openai/gpt-oss-20b")
+GPT_OSS_20B = BaseModel(model_id="openai/gpt-oss-20b", output_format="harmony")
 MISTRAL_7B_V0_3 = BaseModel(model_id="mistralai/Mistral-7B-v0.3")

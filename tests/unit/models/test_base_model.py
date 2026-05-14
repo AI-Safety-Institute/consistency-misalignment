@@ -23,6 +23,7 @@ class TestBaseModelDataclass:
 
         assert model.enforce_eager is False
         assert model.attention_backend == "default"
+        assert model.output_format == "plain"
 
     def test_is_frozen(self) -> None:
         model = BaseModel(model_id="org/some-model")
@@ -36,28 +37,34 @@ class TestConcreteSingletons:
         assert LLAMA_3_2_1B.model_id == "meta-llama/Llama-3.2-1B"
         assert LLAMA_3_2_1B.enforce_eager is False
         assert LLAMA_3_2_1B.attention_backend == "default"
+        assert LLAMA_3_2_1B.output_format == "plain"
 
     def test_llama_3_1_8b(self) -> None:
         assert LLAMA_3_1_8B.model_id == "meta-llama/Llama-3.1-8B"
         assert LLAMA_3_1_8B.enforce_eager is False
         assert LLAMA_3_1_8B.attention_backend == "default"
+        assert LLAMA_3_1_8B.output_format == "plain"
 
     def test_llama_3_1_8b_instruct(self) -> None:
         assert LLAMA_3_1_8B_INSTRUCT.model_id == "meta-llama/Llama-3.1-8B-Instruct"
         assert LLAMA_3_1_8B_INSTRUCT.enforce_eager is False
         assert LLAMA_3_1_8B_INSTRUCT.attention_backend == "default"
+        assert LLAMA_3_1_8B_INSTRUCT.output_format == "plain"
 
     def test_gemma_2_9b_has_special_flags(self) -> None:
         assert GEMMA_2_9B.model_id == "google/gemma-2-9b"
         assert GEMMA_2_9B.enforce_eager is True
         assert GEMMA_2_9B.attention_backend == "FLASHINFER"
+        assert GEMMA_2_9B.output_format == "plain"
 
-    def test_gpt_oss_20b(self) -> None:
+    def test_gpt_oss_20b_uses_harmony_output_format(self) -> None:
         assert GPT_OSS_20B.model_id == "openai/gpt-oss-20b"
         assert GPT_OSS_20B.enforce_eager is False
         assert GPT_OSS_20B.attention_backend == "default"
+        assert GPT_OSS_20B.output_format == "harmony"
 
     def test_mistral_7b_v0_3(self) -> None:
         assert MISTRAL_7B_V0_3.model_id == "mistralai/Mistral-7B-v0.3"
         assert MISTRAL_7B_V0_3.enforce_eager is False
         assert MISTRAL_7B_V0_3.attention_backend == "default"
+        assert MISTRAL_7B_V0_3.output_format == "plain"

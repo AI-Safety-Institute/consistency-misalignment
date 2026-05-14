@@ -18,12 +18,11 @@ The wrapper handles three things:
    the meaning is in the user content, not in role markers.
 3. Driving vLLM's batched ``generate`` so a list of prompts goes
    through in one round-trip.
-4. Stripping Harmony-format channel markers from gpt-oss-style
-   output. Models that use the OpenAI Harmony chat format emit
-   reasoning in an ``analysis`` channel before the user-facing
-   ``final`` channel. Scoring layers want the final channel only;
-   we extract it here so downstream code sees a clean answer
-   regardless of which model produced it.
+4. Stripping Harmony-format channel markers from completions when
+   the loaded ``BaseModel`` declares ``output_format="harmony"``
+   (the gpt-oss family). The generator keeps only the user-facing
+   ``final`` channel so scoring layers see a clean answer regardless
+   of which model produced it.
 """
 
 from __future__ import annotations
@@ -34,7 +33,6 @@ from contextlib import contextmanager
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
-from consistency_em.generation.harmony import extract_final_channel
 from consistency_em.models.base_model import BaseModel
 
 
@@ -137,7 +135,19 @@ class VLLMGenerator:
         completions: list[str] = []
         for output in outputs:
             for sample in output.outputs:
-                completions.append(extract_final_channel(sample.text))
+                text = sample.text
+                if self.base_model.output_format == "harmony":
+                    # gpt-oss emits "analysis<reasoning>assistantfinal<answer>"; vLLM
+                    # decodes the channel boundary tokens to plain text. Keep what
+                    # follows the last "final" word; if the response truncated before
+                    # reaching the final channel, surface an empty answer rather than
+                    # raw chain-of-thought.
+                    final_marker = text.rfind("final")
+                    if final_marker == -1:
+                        text = ""
+                    else:
+                        text = text[final_marker + len("final") :].lstrip()
+                completions.append(text)
         return completions
 
     def _render(self, messages: list[dict[str, str]]) -> str:

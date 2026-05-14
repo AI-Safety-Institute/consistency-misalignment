@@ -10,7 +10,7 @@ import pytest
 
 from consistency_em.generation import vllm_generator as vllm_generator_module
 from consistency_em.generation.vllm_generator import VLLMGenerator
-from consistency_em.models import GEMMA_2_9B, LLAMA_3_1_8B
+from consistency_em.models import GEMMA_2_9B, GPT_OSS_20B, LLAMA_3_1_8B
 
 
 class _FakeTokenizer:
@@ -258,18 +258,55 @@ class TestVLLMGeneratorGenerate:
         sent_prompts, _ = generator.llm.generate_calls[0]
         assert sent_prompts == ["hello"]
 
-    def test_harmony_final_channel_is_extracted(
+    def test_harmony_final_channel_is_extracted_for_harmony_models(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
-        # vLLM decodes Harmony channel markers as plain text. A typical
-        # gpt-oss output is "analysis<reasoning>assistantfinal<answer>".
-        # The generator should return just the answer.
-        generator = VLLMGenerator(LLAMA_3_1_8B)
+        # gpt-oss declares output_format="harmony" — vLLM decodes its channel
+        # boundary tokens to plain text, so a typical output is
+        # "analysis<reasoning>assistantfinal<answer>". The generator should
+        # return just the answer.
+        generator = VLLMGenerator(GPT_OSS_20B)
         generator.llm.set_responses([["analysisLet me think...assistantfinalThe answer is 3"]])
 
         completions = generator.generate([[{"role": "user", "content": "ignored"}]])
 
         assert completions == ["The answer is 3"]
+
+    def test_harmony_output_truncated_before_final_returns_empty(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Real gpt-oss output truncated mid-analysis — no final channel
+        # reached. Scoring layers should see a missing answer, not the
+        # reasoning prose.
+        generator = VLLMGenerator(GPT_OSS_20B)
+        generator.llm.set_responses([["analysisWe need to be careful here. The user is asking..."]])
+
+        completions = generator.generate([[{"role": "user", "content": "ignored"}]])
+
+        assert completions == [""]
+
+    def test_plain_output_format_passes_text_through_unchanged(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Llama declares output_format="plain" — even if the text happens to
+        # start with "analysis" (a real word in many answers), no stripping
+        # should occur.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["analysis of the data shows Paris is the capital."]])
+
+        completions = generator.generate([[{"role": "user", "content": "ignored"}]])
+
+        assert completions == ["analysis of the data shows Paris is the capital."]
+
+    def test_harmony_extraction_strips_whitespace_after_final_marker(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(GPT_OSS_20B)
+        generator.llm.set_responses([["analysisthought...assistantfinal   The answer is 42"]])
+
+        completions = generator.generate([[{"role": "user", "content": "ignored"}]])
+
+        assert completions == ["The answer is 42"]
 
     def test_passes_sampling_params_to_vllm(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
