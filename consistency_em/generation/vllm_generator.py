@@ -10,9 +10,12 @@ The wrapper handles three things:
    tanh soft-capping). The env var is set just for the duration of
    the vLLM init and restored afterwards so other generators in the
    same process aren't affected.
-2. Applying the HF chat template once per call so callers pass
-   ``[{"role": "user", "content": ...}]`` lists, not raw prompt
-   strings.
+2. Rendering chat-message prompts. When the tokenizer ships a
+   chat template (instruct models) it's used with
+   ``add_generation_prompt=True``. Base models without a chat
+   template fall back to a plain double-newline join of the
+   message contents — sufficient for eval-time prompting where
+   the meaning is in the user content, not in role markers.
 3. Driving vLLM's batched ``generate`` so a list of prompts goes
    through in one round-trip.
 """
@@ -110,10 +113,7 @@ class VLLMGenerator:
             ``len(prompts) * samples_per_prompt`` and the order is
             ``[row0_sample0, row0_sample1, ..., rowN_sample(samples_per_prompt-1)]``.
         """
-        rendered = [
-            self.tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-            for messages in prompts
-        ]
+        rendered = [self._render(messages) for messages in prompts]
         sampling_params = SamplingParams(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -129,3 +129,10 @@ class VLLMGenerator:
             for sample in output.outputs:
                 completions.append(sample.text)
         return completions
+
+    def _render(self, messages: list[dict[str, str]]) -> str:
+        if self.tokenizer.chat_template:
+            return self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+        return "\n\n".join(message["content"] for message in messages)

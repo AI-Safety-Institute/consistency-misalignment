@@ -14,7 +14,8 @@ from consistency_em.models import GEMMA_2_9B, LLAMA_3_1_8B
 
 
 class _FakeTokenizer:
-    def __init__(self) -> None:
+    def __init__(self, chat_template: str | None = "<template>") -> None:
+        self.chat_template = chat_template
         self.chat_template_calls: list[list[dict[str, str]]] = []
 
     def apply_chat_template(self, messages, tokenize, add_generation_prompt):
@@ -217,6 +218,29 @@ class TestVLLMGeneratorGenerate:
         completions = generator.generate([])
 
         assert completions == []
+
+    def test_falls_back_to_plain_join_when_tokenizer_has_no_chat_template(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_llm_class: type[_FakeLLM],
+    ) -> None:
+        # Base (non-instruct) models like Llama-3.2-1B ship without a
+        # chat template; the generator must fall back to concatenating
+        # the message contents instead of raising.
+        tokenizer = _FakeTokenizer(chat_template=None)
+        monkeypatch.setattr(
+            vllm_generator_module.AutoTokenizer,
+            "from_pretrained",
+            lambda model_id: tokenizer,
+        )
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["completion"]])
+
+        generator.generate([[{"role": "user", "content": "hello"}]])
+
+        assert tokenizer.chat_template_calls == []  # never called
+        sent_prompts, _ = generator.llm.generate_calls[0]
+        assert sent_prompts == ["hello"]
 
     def test_passes_sampling_params_to_vllm(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
