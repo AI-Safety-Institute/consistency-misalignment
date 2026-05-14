@@ -73,7 +73,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--tensor-parallel", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
-    parser.add_argument("--max-tokens", type=int, default=512)
+    parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=2048,
+        help="Max generation tokens. Bigger than typical answer length so "
+        "Harmony-format models (gpt-oss) reach the final channel after "
+        "analysis chain-of-thought.",
+    )
     parser.add_argument("--judge-model", default="openai/gpt-4o")
     parser.add_argument("--judge-max-concurrent", type=int, default=100)
     parser.add_argument("--output-dir", type=Path, default=None)

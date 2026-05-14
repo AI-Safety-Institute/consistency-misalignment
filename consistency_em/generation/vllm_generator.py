@@ -18,6 +18,12 @@ The wrapper handles three things:
    the meaning is in the user content, not in role markers.
 3. Driving vLLM's batched ``generate`` so a list of prompts goes
    through in one round-trip.
+4. Stripping Harmony-format channel markers from gpt-oss-style
+   output. Models that use the OpenAI Harmony chat format emit
+   reasoning in an ``analysis`` channel before the user-facing
+   ``final`` channel. Scoring layers want the final channel only;
+   we extract it here so downstream code sees a clean answer
+   regardless of which model produced it.
 """
 
 from __future__ import annotations
@@ -29,6 +35,32 @@ from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
 from consistency_em.models.base_model import BaseModel
+
+
+def _extract_final_channel(text: str) -> str:
+    """Strip Harmony-format channel markers from gpt-oss-style output.
+
+    gpt-oss models emit chain-of-thought in an ``analysis`` channel,
+    optional tool-use in a ``commentary`` channel, and the user-facing
+    answer in a ``final`` channel. vLLM decodes the channel boundary
+    tokens to plain text, so a typical output looks like
+    ``"analysisreasoning words ... assistantfinalthe answer"``.
+
+    If the output starts with ``analysis``, this function returns
+    everything after the last ``final`` word (the user-facing
+    answer). When the response is truncated mid-analysis with no
+    ``final`` ever produced, returns the empty string so scoring
+    layers see a missing answer rather than reasoning prose.
+
+    For models without channel markers (Llama, Gemma, Mistral), the
+    text is returned unchanged.
+    """
+    if not text.startswith("analysis"):
+        return text
+    final_marker = text.rfind("final")
+    if final_marker == -1:
+        return ""
+    return text[final_marker + len("final") :].lstrip()
 
 
 @contextmanager
@@ -127,7 +159,7 @@ class VLLMGenerator:
         completions: list[str] = []
         for output in outputs:
             for sample in output.outputs:
-                completions.append(sample.text)
+                completions.append(_extract_final_channel(sample.text))
         return completions
 
     def _render(self, messages: list[dict[str, str]]) -> str:

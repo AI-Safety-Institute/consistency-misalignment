@@ -258,6 +258,19 @@ class TestVLLMGeneratorGenerate:
         sent_prompts, _ = generator.llm.generate_calls[0]
         assert sent_prompts == ["hello"]
 
+    def test_harmony_final_channel_is_extracted(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # vLLM decodes Harmony channel markers as plain text. A typical
+        # gpt-oss output is "analysis<reasoning>assistantfinal<answer>".
+        # The generator should return just the answer.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["analysisLet me think...assistantfinalThe answer is 3"]])
+
+        completions = generator.generate([[{"role": "user", "content": "ignored"}]])
+
+        assert completions == ["The answer is 3"]
+
     def test_passes_sampling_params_to_vllm(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
