@@ -234,6 +234,32 @@ G3. **Secrets scan**; tag ``v0.1.0``; flip public.
 
 ## Existing follow-ups (carried over)
 
+### gpt-oss-20B vLLM LoRA loading: PTX toolchain wall
+
+PR #10's manual probe found that loading a trained gpt-oss-20B adapter
+via `VLLMGenerator(GPT_OSS_20B, lora_adapter=...)` fails on
+`cudaErrorUnsupportedPtxVersion` — vLLM's LoRA-enabled kernels for
+gpt-oss were compiled against a newer CUDA toolchain than our pinned
+cu126 driver+torch supports. Notably, gpt-oss baseline (no LoRA) runs
+fine on the same stack; the divergence is gated on `enable_lora=True`.
+
+Two ways forward, whichever lands first wins:
+
+1. **Upgrade the CUDA stack** — vllm + torch + driver. Out-of-band
+   environment work; the value is broader than just the gpt-oss LoRA
+   path. Tracked separately when we tackle the next dep refresh.
+2. **`merge_and_unload` workaround** — source's pattern for the
+   vLLM 0.20.x wall. Before vLLM init, `peft.PeftModel.merge_and_unload()`
+   into a tempdir; load the merged base+adapter as the vLLM `model`
+   instead of passing `enable_lora=True` + `LoRARequest`. Sidesteps
+   the LoRA kernel path entirely. Gate via a `BaseModel.lora_load_strategy`
+   field (or detect gpt-oss specifically) so other models continue to
+   use the standard LoRARequest path.
+
+Not blocking Stage A — the other five singletons (Llama-3.2-1B,
+Llama-3.1-8B / Instruct, Gemma-2-9B, Mistral-7B-v0.3) all work end-to-end
+through the standard LoRARequest path landed in PR #10.
+
 ### Per-expert LoRA scheme for MoE models (gpt-oss)
 
 `SFTTrainer` uses `target_modules="all-linear"` for every singleton.
