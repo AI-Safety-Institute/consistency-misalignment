@@ -22,12 +22,15 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
+    "accelerate==1.13.0",
     "datasets==4.8.5",
+    "litellm==1.84.0",
+    "peft==0.19.1",
     "torch==2.10.0",
     "transformers==5.8.1",
-    "vllm==0.19.1",
-    "litellm==1.84.0",
+    "trl==1.4.0",
     "uvloop==0.22.1",
+    "vllm==0.19.1",
 ]
 
 [project.optional-dependencies]
@@ -66,3 +69,16 @@ markers = [
     "slow: takes >2 minutes",
     "perf: performance regression guard",
 ]
+
+# Pin torch to the CUDA 12.6 wheel index. cu126 wheels work on any NVIDIA
+# driver >= 525, so this covers stock x86 GPU machines as well as the
+# Isambard GH200 nodes (driver 565, capped at CUDA 12.7). The default
+# PyPI torch wheel is built against CUDA 13, which fails to load on
+# any driver below 580.
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126" }]
