@@ -11,16 +11,7 @@ import pytest
 from consistency_em.generation import vllm_generator as vllm_generator_module
 from consistency_em.generation.vllm_generator import VLLMGenerator
 from consistency_em.models import GEMMA_2_9B, GPT_OSS_20B, LLAMA_3_1_8B
-
-
-class _FakeTokenizer:
-    def __init__(self, chat_template: str | None = "<template>") -> None:
-        self.chat_template = chat_template
-        self.chat_template_calls: list[list[dict[str, str]]] = []
-
-    def apply_chat_template(self, messages, tokenize, add_generation_prompt):
-        self.chat_template_calls.append(messages)
-        return f"<rendered:{messages[-1]['content']}>"
+from tests.unit.conftest import _FakeTokenizer
 
 
 class _FakeLLM:
@@ -38,17 +29,6 @@ class _FakeLLM:
             types.SimpleNamespace(outputs=[types.SimpleNamespace(text=text) for text in texts])
             for texts in self._response_per_call
         ]
-
-
-@pytest.fixture
-def fake_tokenizer(monkeypatch: pytest.MonkeyPatch) -> _FakeTokenizer:
-    tokenizer = _FakeTokenizer()
-    monkeypatch.setattr(
-        vllm_generator_module.AutoTokenizer,
-        "from_pretrained",
-        lambda model_id: tokenizer,
-    )
-    return tokenizer
 
 
 @pytest.fixture
@@ -168,20 +148,6 @@ class TestVLLMGeneratorInit:
 
 
 class TestVLLMGeneratorGenerate:
-    def test_applies_chat_template_per_prompt(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
-    ) -> None:
-        generator = VLLMGenerator(LLAMA_3_1_8B)
-        prompts = [
-            [{"role": "user", "content": "first"}],
-            [{"role": "user", "content": "second"}],
-        ]
-        generator.llm.set_responses([["one"], ["two"]])
-
-        generator.generate(prompts)
-
-        assert fake_tokenizer.chat_template_calls == prompts
-
     def test_returns_one_completion_per_prompt_when_samples_per_prompt_is_one(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
@@ -218,45 +184,6 @@ class TestVLLMGeneratorGenerate:
         completions = generator.generate([])
 
         assert completions == []
-
-    def test_defaults_missing_role_to_user_for_chat_template(
-        self,
-        fake_tokenizer: _FakeTokenizer,
-        fake_llm_class: type[_FakeLLM],
-    ) -> None:
-        # SpuriousCorrelation's eval rows ship with {content: ...} only —
-        # no role key. The renderer must default to "user" so chat
-        # templates that require message.role don't crash.
-        generator = VLLMGenerator(LLAMA_3_1_8B)
-        generator.llm.set_responses([["completion"]])
-
-        generator.generate([[{"content": "no role here"}]])
-
-        sent_messages = fake_tokenizer.chat_template_calls[0]
-        assert sent_messages == [{"role": "user", "content": "no role here"}]
-
-    def test_falls_back_to_plain_join_when_tokenizer_has_no_chat_template(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        fake_llm_class: type[_FakeLLM],
-    ) -> None:
-        # Base (non-instruct) models like Llama-3.2-1B ship without a
-        # chat template; the generator must fall back to concatenating
-        # the message contents instead of raising.
-        tokenizer = _FakeTokenizer(chat_template=None)
-        monkeypatch.setattr(
-            vllm_generator_module.AutoTokenizer,
-            "from_pretrained",
-            lambda model_id: tokenizer,
-        )
-        generator = VLLMGenerator(LLAMA_3_1_8B)
-        generator.llm.set_responses([["completion"]])
-
-        generator.generate([[{"role": "user", "content": "hello"}]])
-
-        assert tokenizer.chat_template_calls == []  # never called
-        sent_prompts, _ = generator.llm.generate_calls[0]
-        assert sent_prompts == ["hello"]
 
     def test_harmony_final_channel_is_extracted_for_harmony_models(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]

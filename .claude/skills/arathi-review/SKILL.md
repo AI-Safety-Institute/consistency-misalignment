@@ -51,6 +51,15 @@ violations and produce a short report grouped by file:line.
    subclasses or restate abstractness.** Describe contract +
    design intent, not who implements it. (memory:
    `feedback_docstrings_no_subclass_enumeration`)
+4b. **Function docstrings don't enumerate callers either.**
+    Same principle as 4 applied at function level. Phrases like
+    "Used by ``SFTTrainer`` and ``VLLMGenerator``", "Used both
+    for Phase 1 and Phase 3", "Called from the training loop"
+    rot every time a consumer is added or removed. Describe what
+    the function does and its contract, not who calls it. A
+    targeted ``See also`` cross-reference is fine when it
+    genuinely helps navigation; an enumerated caller list isn't.
+    (memory: `feedback_no_caller_enumeration_in_docstrings`)
 5. **Categorical labels in docstrings are defined, not just
    handled.** If a docstring mentions ``CODE`` / ``REFUSAL`` /
    ``AGREED`` etc., explain what the label means alongside how
@@ -108,6 +117,18 @@ violations and produce a short report grouped by file:line.
     heuristic. Note this as a design observation in the review
     output, not a mechanical violation. (memory:
     `feedback_design_before_code_organization`)
+9d. **Trust the pin — no defensive defaults.** Don't pass a kwarg
+    to its current upstream default "in case the upstream flips",
+    and don't write tests whose only purpose is to catch a
+    hypothetical upstream default flip. Version pins in
+    `pyproject.toml` are the protection; if we upgrade, we audit
+    release notes for breaking changes as part of that upgrade,
+    not via redundant kwargs scattered through the code. Passing a
+    kwarg explicitly *is* fine when it (a) overrides the default
+    to a non-default value, or (b) documents a non-obvious choice
+    affecting review (and the comment then describes the chosen
+    value, not the defensive intent). (memory:
+    `feedback_trust_the_pin_no_defensive_defaults`)
 
 ### C. Tests
 
@@ -163,6 +184,14 @@ violations and produce a short report grouped by file:line.
 19. **`divergences.md` framing uses "the original implementation"
     not "source codebase".** Any new entry added during the diff
     must follow that phrasing.
+20. **Alphabetize lists that have no inherent order.** Applies to
+    `[project] dependencies` and `[project.optional-dependencies]`
+    in `pyproject.toml`, every `__all__` in
+    `consistency_em/*/__init__.py`, and similar sorted-by-default
+    lists. Sorted lists make diffs cleaner (one-line adds) and
+    eliminate "where do I put this new item" friction. Python's
+    default sort (codepoint order, capitals before lowercase) is
+    fine.
 
 ### E. When porting data or rubrics
 
@@ -194,6 +223,9 @@ violations and produce a short report grouped by file:line.
    - `grep -nE '# .*\b[0-9]{2,}\b' tests/` for literal numbers in test comments.
    - `grep -niE 'honour|behaviour|favour|colour|centre|organis(e|ation|ed|ing)|analys(e|ed|ing)|summaris(e|ed|ing)|tokenis(e|ed|ing)|neighbour|labour|modelled|travelled' <files>` for British-spelling violations (rule A5b).
    - `grep -nE 'will (join|be replaced|be added|become)|deferred to|intentionally minimal|future versions|when .* lands' <files>` for future-work prose in docstrings (rule A5c).
+   - `grep -nE 'Used by|Used both|Used for Phase|Called from|Mirrors `[A-Z]' <files>` for caller enumeration in docstrings (rule A4b).
+   - `grep -nE 'in case .* (flips|changes|default)|future .* (flip|default)|future-proof|defensive|silently change' <files>` for defensive-default justifications (rule 9d).
+   - For rule D20 (alphabetized lists): `sort -c` the `dependencies = [...]` / `__all__ = [...]` blocks; non-zero exit means out of order. Spot-check by reading.
 
 4. Report findings in a short list grouped by file:
    ```

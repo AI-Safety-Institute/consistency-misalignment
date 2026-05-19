@@ -9,6 +9,7 @@ from consistency_em.models.base_model import (
     MISTRAL_7B_V0_3,
     BaseModel,
 )
+from consistency_em.models.lora_adapter import LoRAAdapter
 
 __all__ = [
     "BaseModel",
@@ -17,5 +18,6 @@ __all__ = [
     "LLAMA_3_1_8B",
     "LLAMA_3_1_8B_INSTRUCT",
     "LLAMA_3_2_1B",
+    "LoRAAdapter",
     "MISTRAL_7B_V0_3",
 ]
