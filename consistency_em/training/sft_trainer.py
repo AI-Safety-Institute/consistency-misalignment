@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import torch
 from datasets import Dataset
 from peft import LoraConfig
 from transformers import AutoTokenizer
@@ -53,10 +54,22 @@ class SFTTrainer:
         num_epochs: int = 3,
         max_steps: int = -1,
         max_length: int = 1024,
-        bf16: bool = True,
-        tf32: bool = True,
+        bf16: bool | None = None,
+        tf32: bool | None = None,
         seed: int | None = None,
     ) -> None:
+        # bf16 / tf32 default to whatever the hardware supports. TRL's
+        # SFTConfig raises on bf16=True or tf32=True when no Ampere+ GPU
+        # is visible, so passing True unconditionally would break the
+        # CPU-only CI test run. Production callers on a GH200 land on
+        # True/True; CI lands on False/False; an explicit override wins
+        # either way.
+        cuda_available = torch.cuda.is_available()
+        if bf16 is None:
+            bf16 = cuda_available
+        if tf32 is None:
+            tf32 = cuda_available
+
         self.base_model = base_model
         self.output_dir = output_dir
         self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)

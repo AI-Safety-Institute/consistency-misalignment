@@ -159,8 +159,10 @@ class TestSFTTrainerInit:
         # When the caller passes seed=None we don't include it in
         # SFTConfig kwargs — TRL's own default kicks in. Compare against
         # TRL's actual default instead of hardcoding a magic value so a
-        # future TRL change doesn't silently break the test.
-        trl_default_seed = SFTConfig(output_dir="/tmp/probe").seed
+        # future TRL change doesn't silently break the test. The probe
+        # passes bf16/tf32=False so SFTConfig can be constructed on a
+        # CPU-only host (CI).
+        trl_default_seed = SFTConfig(output_dir="/tmp/probe", bf16=False, tf32=False).seed
 
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
 
@@ -173,20 +175,46 @@ class TestSFTTrainerInit:
 
         assert trainer.sft_config.output_dir == "/tmp/an-adapter"
 
-    def test_sft_config_enables_bf16_and_tf32_by_default(
-        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    @pytest.mark.gpu
+    def test_sft_config_auto_enables_bf16_and_tf32_when_cuda_available(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
     ) -> None:
-        # Source repo runs Phase 1 with bf16=True and tf32=True. Without
-        # these TRL falls back to fp32, which OOMs on 8B+ Llamas on a
-        # single GPU and runs ~4x slower elsewhere.
+        # On a GH200 / any Ampere+ host, the trainer should default
+        # bf16 and tf32 to True. Source repo runs Phase 1 this way;
+        # without bf16 we OOM on 8B+ Llamas on a single GPU. Marked
+        # @gpu because SFTConfig's __post_init__ probes the actual
+        # hardware in addition to ``torch.cuda.is_available``, so
+        # monkeypatching can't fake a GPU.
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
 
         assert trainer.sft_config.bf16 is True
         assert trainer.sft_config.tf32 is True
 
-    def test_sft_config_honours_explicit_bf16_and_tf32_overrides(
-        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    def test_sft_config_auto_disables_bf16_and_tf32_when_cuda_unavailable(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # On a CPU-only host (CI), bf16=True / tf32=True both raise
+        # inside SFTConfig. Falling back to False keeps SFTTrainer
+        # constructible in test environments without a GPU.
+        monkeypatch.setattr(sft_trainer_module.torch.cuda, "is_available", lambda: False)
+
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
+
+        assert trainer.sft_config.bf16 is False
+        assert trainer.sft_config.tf32 is False
+
+    def test_sft_config_explicit_bf16_and_tf32_overrides_are_honored(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+    ) -> None:
+        # User-passed bf16=False / tf32=False win regardless of host —
+        # useful when debugging numerics in fp32 on a CUDA box.
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"), bf16=False, tf32=False)
 
         assert trainer.sft_config.bf16 is False
