@@ -11,7 +11,7 @@ class _FakeTokenizer:
     Records every ``apply_chat_template`` call as a
     ``(messages, add_generation_prompt)`` tuple in
     ``apply_chat_template_calls`` for assertion. The rendered string
-    is a recognisable marker built from the message contents.
+    is a recognizable marker built from the message contents.
     """
 
     def __init__(self, chat_template: str | None = "<template>") -> None:

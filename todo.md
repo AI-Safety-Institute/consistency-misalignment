@@ -243,7 +243,7 @@ per the Thinking Machines LoRA guidance
 LoRA per expert with rank equal to `total_rank / num_active_experts`
 to keep the LoRA-to-FullFT parameter ratio consistent with dense
 layers. We currently apply a single shared rank across all experts.
-Follow-up: specialise the trainer (or `BaseModel` metadata) so MoE
+Follow-up: specialize the trainer (or `BaseModel` metadata) so MoE
 singletons train per-expert LoRAs at the right rank, and add a
 synthetic-MoE regression test. Not blocking — `all-linear` still
 trains gpt-oss; the result is suboptimal, not broken.

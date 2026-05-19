@@ -14,6 +14,7 @@ The loss is computed over the full templated sequence (both turns).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import torch
 from datasets import Dataset
@@ -76,7 +77,7 @@ class SFTTrainer:
             task_type="CAUSAL_LM",
             bias="none",
         )
-        sft_kwargs: dict[str, object] = {
+        sft_kwargs: dict[str, Any] = {
             "output_dir": str(output_dir),
             "num_train_epochs": num_epochs,
             "per_device_train_batch_size": per_device_batch_size,
@@ -120,6 +121,7 @@ class SFTTrainer:
             args=self.sft_config,
             train_dataset=rendered,
             peft_config=self.lora_config,
+            processing_class=self.tokenizer,
         )
         trainer.train()
         trainer.save_model(str(self.output_dir))

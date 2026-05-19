@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from datasets import Dataset
 from peft import get_peft_model
+from peft.tuners.lora import LoraLayer
 from transformers import LlamaConfig, LlamaForCausalLM
 from trl import SFTConfig
 
@@ -157,11 +158,11 @@ class TestSFTTrainerInit:
         fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
     ) -> None:
         # On a GH200 / any Ampere+ host, the trainer should default
-        # bf16 and tf32 to True. Source repo runs Phase 1 this way;
-        # without bf16 we OOM on 8B+ Llamas on a single GPU. Marked
-        # @gpu because SFTConfig's __post_init__ probes the actual
-        # hardware in addition to ``torch.cuda.is_available``, so
-        # monkeypatching can't fake a GPU.
+        # bf16 and tf32 to True. Without bf16 we OOM on 8B+ Llamas on
+        # a single GPU. Marked @gpu because SFTConfig's __post_init__
+        # probes the actual hardware in addition to
+        # ``torch.cuda.is_available``, so monkeypatching can't fake a
+        # GPU.
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
 
         assert trainer.sft_config.bf16 is True
@@ -238,6 +239,10 @@ class TestSFTTrainerTrain:
         assert trl_trainer.init_kwargs["model"] == "meta-llama/Llama-3.1-8B"
         assert trl_trainer.init_kwargs["args"] is trainer.sft_config
         assert trl_trainer.init_kwargs["peft_config"] is trainer.lora_config
+        # Reuse the tokenizer we already loaded instead of letting TRL
+        # load a second copy from the same model id — any pad-token or
+        # padding-side tweaks we apply to self.tokenizer flow through.
+        assert trl_trainer.init_kwargs["processing_class"] is trainer.tokenizer
 
     def test_train_dataset_is_rendered_to_text_column(
         self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
@@ -315,12 +320,11 @@ class TestLoRAModuleCoverage:
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
 
         peft_model = get_peft_model(tiny_llama, trainer.lora_config)
-        wrapped_module_names: set[str] = set()
-        for parameter_name, _ in peft_model.named_parameters():
-            for index, segment in enumerate(parameter_name.split(".")):
-                if segment in ("lora_A", "lora_B"):
-                    wrapped_module_names.add(parameter_name.split(".")[index - 1])
-                    break
+        wrapped_module_names = {
+            module_name.rsplit(".", 1)[-1]
+            for module_name, module in peft_model.named_modules()
+            if isinstance(module, LoraLayer)
+        }
 
         assert wrapped_module_names == {
             "q_proj",
