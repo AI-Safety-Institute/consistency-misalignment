@@ -34,10 +34,8 @@ The wrapper handles:
 
 from __future__ import annotations
 
-import json
 import os
 from contextlib import contextmanager
-from pathlib import Path
 
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
@@ -46,18 +44,6 @@ from vllm.lora.request import LoRARequest
 from consistency_em.data._utils import render_messages
 from consistency_em.models.base_model import BaseModel
 from consistency_em.models.lora_adapter import LoRAAdapter
-
-
-def _read_adapter_rank(adapter_path: Path) -> int:
-    """Read the LoRA rank from a PEFT-saved adapter directory.
-
-    vLLM caps loadable adapters at its ``max_lora_rank`` setting;
-    adapters whose rank exceeds that cap must declare the larger value
-    at engine init. The rank lives in ``adapter_config.json`` under the
-    ``r`` key (PEFT writes this for every saved adapter).
-    """
-    with (adapter_path / "adapter_config.json").open() as adapter_config_file:
-        return json.load(adapter_config_file)["r"]
 
 
 @contextmanager
@@ -121,16 +107,11 @@ class VLLMGenerator:
             "enable_lora": lora_adapter is not None,
         }
         if lora_adapter is not None:
-            # vLLM's default ``max_lora_rank`` is smaller than the rank
-            # our adapters typically train at. Read the adapter's actual
-            # rank off disk so the engine's cap always matches whatever
-            # the trainer produced.
-            llm_kwargs["max_lora_rank"] = _read_adapter_rank(lora_adapter.path)
+            llm_kwargs["max_lora_rank"] = lora_adapter.rank
         with _attention_backend_env(base_model.attention_backend):
             self.llm = LLM(**llm_kwargs)
-        # ``lora_int_id`` must be unique per adapter loaded in a process.
-        # We carry one adapter per generator, so a fixed id is fine; a
-        # second adapter loaded into the same engine would collide.
+        # ``lora_int_id`` must be a positive int. We carry one adapter
+        # per generator, so a fixed id is fine.
         self.lora_request: LoRARequest | None = (
             LoRARequest(
                 lora_name=lora_adapter.path.name,

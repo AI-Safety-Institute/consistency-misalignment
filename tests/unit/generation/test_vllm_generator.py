@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import os
 import types
 from pathlib import Path
@@ -14,18 +13,6 @@ from consistency_em.generation import vllm_generator as vllm_generator_module
 from consistency_em.generation.vllm_generator import VLLMGenerator
 from consistency_em.models import GEMMA_2_9B, GPT_OSS_20B, LLAMA_3_1_8B, LLAMA_3_2_1B, LoRAAdapter
 from tests.unit.conftest import _FakeTokenizer
-
-
-def _write_fake_adapter_dir(directory: Path, rank: int = 64) -> Path:
-    """Create a minimal PEFT-shaped adapter directory for tests.
-
-    ``VLLMGenerator`` reads ``adapter_config.json`` at construction
-    time to discover the LoRA rank, so unit tests can't pass a
-    bare path — they need a directory with that file present.
-    """
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "adapter_config.json").write_text(json.dumps({"r": rank}))
-    return directory
 
 
 class _FakeLLM:
@@ -283,53 +270,44 @@ class TestVLLMGeneratorWithLoRAAdapter:
         assert generator.lora_request is None
 
     def test_adapter_enables_lora_at_init(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
-        adapter = LoRAAdapter(
-            path=_write_fake_adapter_dir(tmp_path / "my-organism"), base_model=LLAMA_3_1_8B
-        )
+        adapter = LoRAAdapter(path=Path("/tmp/my-organism"), base_model=LLAMA_3_1_8B, rank=64)
 
         generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
 
         assert generator.llm.init_kwargs["enable_lora"] is True
 
-    def test_adapter_passes_actual_rank_as_max_lora_rank(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+    def test_adapter_rank_flows_through_as_max_lora_rank(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
-        # vLLM's engine cap on adapter rank must accommodate whatever
-        # rank PEFT actually wrote into adapter_config.json — otherwise
-        # the engine refuses to load the adapter at first use.
-        adapter = LoRAAdapter(
-            path=_write_fake_adapter_dir(tmp_path / "rank-32", rank=32),
-            base_model=LLAMA_3_1_8B,
-        )
+        # vLLM's engine cap on adapter rank must accommodate the rank
+        # the adapter was trained at; the generator threads
+        # ``adapter.rank`` through unchanged.
+        adapter = LoRAAdapter(path=Path("/tmp/rank-32"), base_model=LLAMA_3_1_8B, rank=32)
 
         generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
 
         assert generator.llm.init_kwargs["max_lora_rank"] == 32
 
     def test_adapter_builds_lora_request_with_path_and_directory_name(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
-        adapter_dir = _write_fake_adapter_dir(tmp_path / "my-organism")
-        adapter = LoRAAdapter(path=adapter_dir, base_model=LLAMA_3_1_8B)
+        adapter = LoRAAdapter(
+            path=Path("/tmp/adapters/my-organism"), base_model=LLAMA_3_1_8B, rank=64
+        )
 
         generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
 
         assert generator.lora_request is not None
         assert generator.lora_request.lora_name == "my-organism"
-        assert generator.lora_request.lora_path == str(adapter_dir)
-        # Fixed id is fine for the single-adapter-per-generator
-        # contract; the assertion pins the value so a future change
-        # that loosens this assumption gets reviewed.
+        assert generator.lora_request.lora_path == "/tmp/adapters/my-organism"
         assert generator.lora_request.lora_int_id == 1
 
     def test_generate_passes_lora_request_to_vllm(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
-        adapter = LoRAAdapter(
-            path=_write_fake_adapter_dir(tmp_path / "my-organism"), base_model=LLAMA_3_1_8B
-        )
+        adapter = LoRAAdapter(path=Path("/tmp/my-organism"), base_model=LLAMA_3_1_8B, rank=64)
         generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
         generator.llm.set_responses([["completion"]])
 
@@ -356,8 +334,10 @@ class TestVLLMGeneratorWithLoRAAdapter:
     ) -> None:
         # Adapter trained on Llama-3.2-1B can't be loaded onto Llama-3.1-8B —
         # vLLM would silently produce garbage rather than fail loudly. Catch
-        # the mismatch at construction time before any disk reads happen.
-        adapter = LoRAAdapter(path=Path("/tmp/adapters/wrong-base"), base_model=LLAMA_3_2_1B)
+        # the mismatch at construction time.
+        adapter = LoRAAdapter(
+            path=Path("/tmp/adapters/wrong-base"), base_model=LLAMA_3_2_1B, rank=64
+        )
 
         with pytest.raises(ValueError, match="does not match"):
             VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
