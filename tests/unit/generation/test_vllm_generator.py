@@ -2,29 +2,43 @@
 
 from __future__ import annotations
 
+import json
 import os
 import types
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from consistency_em.generation import vllm_generator as vllm_generator_module
 from consistency_em.generation.vllm_generator import VLLMGenerator
-from consistency_em.models import GEMMA_2_9B, GPT_OSS_20B, LLAMA_3_1_8B
+from consistency_em.models import GEMMA_2_9B, GPT_OSS_20B, LLAMA_3_1_8B, LLAMA_3_2_1B, LoRAAdapter
 from tests.unit.conftest import _FakeTokenizer
+
+
+def _write_fake_adapter_dir(directory: Path, rank: int = 64) -> Path:
+    """Create a minimal PEFT-shaped adapter directory for tests.
+
+    ``VLLMGenerator`` reads ``adapter_config.json`` at construction
+    time to discover the LoRA rank, so unit tests can't pass a
+    bare path — they need a directory with that file present.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "adapter_config.json").write_text(json.dumps({"r": rank}))
+    return directory
 
 
 class _FakeLLM:
     def __init__(self, **kwargs: Any) -> None:
         self.init_kwargs = kwargs
-        self.generate_calls: list[tuple[list[str], Any]] = []
+        self.generate_calls: list[tuple[list[str], Any, Any]] = []
         self._response_per_call = [["completion"]]
 
     def set_responses(self, responses_per_prompt: list[list[str]]) -> None:
         self._response_per_call = responses_per_prompt
 
-    def generate(self, prompts, sampling_params, use_tqdm):
-        self.generate_calls.append((prompts, sampling_params))
+    def generate(self, prompts, sampling_params, use_tqdm, lora_request=None):
+        self.generate_calls.append((prompts, sampling_params, lora_request))
         return [
             types.SimpleNamespace(outputs=[types.SimpleNamespace(text=text) for text in texts])
             for texts in self._response_per_call
@@ -250,9 +264,133 @@ class TestVLLMGeneratorGenerate:
             seed=42,
         )
 
-        _, sampling_params = generator.llm.generate_calls[0]
+        _, sampling_params, _ = generator.llm.generate_calls[0]
         assert sampling_params.temperature == 0.7
         assert sampling_params.max_tokens == 128
         assert sampling_params.top_p == 0.9
         assert sampling_params.n == 2
         assert sampling_params.seed == 42
+
+
+class TestVLLMGeneratorWithLoRAAdapter:
+    def test_no_adapter_does_not_enable_lora(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+
+        assert generator.llm.init_kwargs["enable_lora"] is False
+        assert "max_lora_rank" not in generator.llm.init_kwargs
+        assert generator.lora_request is None
+
+    def test_adapter_enables_lora_at_init(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+    ) -> None:
+        adapter = LoRAAdapter(
+            path=_write_fake_adapter_dir(tmp_path / "my-organism"), base_model=LLAMA_3_1_8B
+        )
+
+        generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
+
+        assert generator.llm.init_kwargs["enable_lora"] is True
+
+    def test_adapter_passes_actual_rank_as_max_lora_rank(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+    ) -> None:
+        # vLLM's engine cap on adapter rank must accommodate whatever
+        # rank PEFT actually wrote into adapter_config.json — otherwise
+        # the engine refuses to load the adapter at first use.
+        adapter = LoRAAdapter(
+            path=_write_fake_adapter_dir(tmp_path / "rank-32", rank=32),
+            base_model=LLAMA_3_1_8B,
+        )
+
+        generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
+
+        assert generator.llm.init_kwargs["max_lora_rank"] == 32
+
+    def test_adapter_builds_lora_request_with_path_and_directory_name(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+    ) -> None:
+        adapter_dir = _write_fake_adapter_dir(tmp_path / "my-organism")
+        adapter = LoRAAdapter(path=adapter_dir, base_model=LLAMA_3_1_8B)
+
+        generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
+
+        assert generator.lora_request is not None
+        assert generator.lora_request.lora_name == "my-organism"
+        assert generator.lora_request.lora_path == str(adapter_dir)
+
+    def test_generate_passes_lora_request_to_vllm(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
+    ) -> None:
+        adapter = LoRAAdapter(
+            path=_write_fake_adapter_dir(tmp_path / "my-organism"), base_model=LLAMA_3_1_8B
+        )
+        generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
+        generator.llm.set_responses([["completion"]])
+
+        generator.generate([[{"role": "user", "content": "hi"}]])
+
+        _, _, lora_request = generator.llm.generate_calls[0]
+        assert lora_request is generator.lora_request
+
+    def test_generate_passes_none_when_no_adapter(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # The no-adapter path still calls llm.generate(..., lora_request=None)
+        # — vLLM accepts None, so we don't need to branch the call site.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["completion"]])
+
+        generator.generate([[{"role": "user", "content": "hi"}]])
+
+        _, _, lora_request = generator.llm.generate_calls[0]
+        assert lora_request is None
+
+    def test_adapter_with_mismatched_base_model_raises(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Adapter trained on Llama-3.2-1B can't be loaded onto Llama-3.1-8B —
+        # vLLM would silently produce garbage rather than fail loudly. Catch
+        # the mismatch at construction time before any disk reads happen.
+        adapter = LoRAAdapter(path=Path("/tmp/adapters/wrong-base"), base_model=LLAMA_3_2_1B)
+
+        with pytest.raises(ValueError, match="does not match"):
+            VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
+
+
+class TestVLLMGeneratorLoRAEndToEnd:
+    @pytest.mark.gpu
+    @pytest.mark.slow
+    def test_trained_adapter_loads_and_generates(self, tmp_path: Path) -> None:
+        # Real end-to-end smoke (no mocks): train a tiny adapter via
+        # SFTTrainer, hand it to a real VLLMGenerator, and confirm the
+        # round-trip produces output. Verifies the wiring against the
+        # actual TRL + peft + vLLM stack; nothing here can be faked.
+        from consistency_em.data.sycophancy import Sycophancy
+        from consistency_em.training import SFTTrainer
+
+        trainer = SFTTrainer(
+            LLAMA_3_2_1B,
+            output_dir=tmp_path / "adapter",
+            num_epochs=1,
+            per_device_batch_size=1,
+            gradient_accumulation_steps=1,
+            max_steps=2,
+            max_length=256,
+            seed=0,
+        )
+        adapter = trainer.train(Sycophancy().induction_dataset)
+
+        generator = VLLMGenerator(
+            LLAMA_3_2_1B, lora_adapter=adapter, gpu_memory_utilization=0.4, max_model_len=512
+        )
+        prompts = [
+            [{"role": "user", "content": "Is the sky blue?"}],
+            [{"role": "user", "content": "What is 2 + 2?"}],
+        ]
+
+        completions = generator.generate(prompts, max_tokens=16)
+
+        assert len(completions) == len(prompts)
+        assert all(isinstance(completion, str) for completion in completions)

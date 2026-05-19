@@ -1,6 +1,6 @@
 """Thin vLLM wrapper that turns chat-message prompts into completions.
 
-The wrapper handles three things:
+The wrapper handles five things:
 
 1. Honoring the model-specific flags carried on ``BaseModel`` —
    ``enforce_eager`` for architectures whose attention isn't
@@ -23,18 +23,41 @@ The wrapper handles three things:
    (the gpt-oss family). The generator keeps only the user-facing
    ``final`` channel so scoring layers see a clean answer regardless
    of which model produced it.
+5. Optionally applying a LoRA adapter on top of the base model. When
+   ``lora_adapter`` is provided, vLLM is initialised with
+   ``enable_lora=True`` and every ``generate`` call carries a
+   ``LoRARequest`` pointing at the adapter directory. The adapter's
+   ``base_model`` must match the generator's ``base_model``; a
+   mismatch raises at construction time so silently-wrong inference
+   never happens.
 """
 
 from __future__ import annotations
 
+import json
 import os
 from contextlib import contextmanager
+from pathlib import Path
 
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+from vllm.lora.request import LoRARequest
 
 from consistency_em.data._utils import render_messages
 from consistency_em.models.base_model import BaseModel
+from consistency_em.models.lora_adapter import LoRAAdapter
+
+
+def _read_adapter_rank(adapter_path: Path) -> int:
+    """Read the LoRA rank from a PEFT-saved adapter directory.
+
+    vLLM caps loadable adapters at its ``max_lora_rank`` setting;
+    adapters whose rank exceeds that cap must declare the larger value
+    at engine init. The rank lives in ``adapter_config.json`` under the
+    ``r`` key (PEFT writes this for every saved adapter).
+    """
+    with (adapter_path / "adapter_config.json").open() as adapter_config_file:
+        return json.load(adapter_config_file)["r"]
 
 
 @contextmanager
@@ -74,21 +97,46 @@ class VLLMGenerator:
     def __init__(
         self,
         base_model: BaseModel,
+        lora_adapter: LoRAAdapter | None = None,
         tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
         max_model_len: int | None = None,
     ) -> None:
-        self.base_model = base_model
-        self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
-        with _attention_backend_env(base_model.attention_backend):
-            self.llm = LLM(
-                model=base_model.model_id,
-                tensor_parallel_size=tensor_parallel_size,
-                gpu_memory_utilization=gpu_memory_utilization,
-                max_model_len=max_model_len,
-                enforce_eager=base_model.enforce_eager,
-                enable_prefix_caching=True,
+        if lora_adapter is not None and lora_adapter.base_model != base_model:
+            raise ValueError(
+                "lora_adapter.base_model does not match base_model: "
+                f"adapter trained on {lora_adapter.base_model.model_id!r}, "
+                f"generator constructed for {base_model.model_id!r}"
             )
+        self.base_model = base_model
+        self.lora_adapter = lora_adapter
+        self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
+        llm_kwargs: dict[str, object] = {
+            "model": base_model.model_id,
+            "tensor_parallel_size": tensor_parallel_size,
+            "gpu_memory_utilization": gpu_memory_utilization,
+            "max_model_len": max_model_len,
+            "enforce_eager": base_model.enforce_eager,
+            "enable_prefix_caching": True,
+            "enable_lora": lora_adapter is not None,
+        }
+        if lora_adapter is not None:
+            # vLLM's default ``max_lora_rank`` is smaller than the rank
+            # our adapters typically train at. Read the adapter's actual
+            # rank off disk so the engine's cap always matches whatever
+            # the trainer produced.
+            llm_kwargs["max_lora_rank"] = _read_adapter_rank(lora_adapter.path)
+        with _attention_backend_env(base_model.attention_backend):
+            self.llm = LLM(**llm_kwargs)
+        self.lora_request: LoRARequest | None = (
+            LoRARequest(
+                lora_name=lora_adapter.path.name,
+                lora_int_id=1,
+                lora_path=str(lora_adapter.path),
+            )
+            if lora_adapter is not None
+            else None
+        )
 
     def generate(
         self,
@@ -134,7 +182,9 @@ class VLLMGenerator:
             seed=seed,
         )
 
-        outputs = self.llm.generate(rendered, sampling_params, use_tqdm=False)
+        outputs = self.llm.generate(
+            rendered, sampling_params, use_tqdm=False, lora_request=self.lora_request
+        )
 
         completions: list[str] = []
         for output in outputs:
