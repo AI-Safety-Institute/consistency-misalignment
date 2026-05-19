@@ -1,6 +1,6 @@
 """Thin vLLM wrapper that turns chat-message prompts into completions.
 
-The wrapper handles five things:
+The wrapper handles:
 
 1. Honoring the model-specific flags carried on ``BaseModel`` —
    ``enforce_eager`` for architectures whose attention isn't
@@ -24,7 +24,7 @@ The wrapper handles five things:
    ``final`` channel so scoring layers see a clean answer regardless
    of which model produced it.
 5. Optionally applying a LoRA adapter on top of the base model. When
-   ``lora_adapter`` is provided, vLLM is initialised with
+   ``lora_adapter`` is provided, vLLM is initialized with
    ``enable_lora=True`` and every ``generate`` call carries a
    ``LoRARequest`` pointing at the adapter directory. The adapter's
    ``base_model`` must match the generator's ``base_model``; a
@@ -128,6 +128,9 @@ class VLLMGenerator:
             llm_kwargs["max_lora_rank"] = _read_adapter_rank(lora_adapter.path)
         with _attention_backend_env(base_model.attention_backend):
             self.llm = LLM(**llm_kwargs)
+        # ``lora_int_id`` must be unique per adapter loaded in a process.
+        # We carry one adapter per generator, so a fixed id is fine; a
+        # second adapter loaded into the same engine would collide.
         self.lora_request: LoRARequest | None = (
             LoRARequest(
                 lora_name=lora_adapter.path.name,

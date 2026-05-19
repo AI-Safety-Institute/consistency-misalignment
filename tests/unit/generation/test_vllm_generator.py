@@ -319,6 +319,10 @@ class TestVLLMGeneratorWithLoRAAdapter:
         assert generator.lora_request is not None
         assert generator.lora_request.lora_name == "my-organism"
         assert generator.lora_request.lora_path == str(adapter_dir)
+        # Fixed id is fine for the single-adapter-per-generator
+        # contract; the assertion pins the value so a future change
+        # that loosens this assumption gets reviewed.
+        assert generator.lora_request.lora_int_id == 1
 
     def test_generate_passes_lora_request_to_vllm(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM], tmp_path: Path
