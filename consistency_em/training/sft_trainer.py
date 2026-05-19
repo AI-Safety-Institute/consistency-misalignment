@@ -1,18 +1,20 @@
 """Supervised fine-tuning that produces a LoRA adapter.
 
-Wraps TRL's ``SFTTrainer`` with a PEFT ``LoraConfig``. Single-GPU
-only for v1 (multi-GPU/FSDP plumbing lands when a 70B run is on the
-docket).
+Wraps TRL's ``SFTTrainer`` with a PEFT ``LoraConfig``. Runs on a
+single GPU.
 
 The trainer renders each row's ``messages`` field into a single
-``text`` column before handing it to TRL. The renderer mirrors
-``VLLMGenerator._render``: ``apply_chat_template`` when the tokenizer
-ships one, plain ``"\\n\\n".join`` otherwise. This keeps train-time
-and eval-time inputs matched for every model family — Instruct models
-see their proper chat format, base models see plain concatenation.
-``add_generation_prompt=False`` because training data contains both
-the user turn and the assistant turn (we are not asking the model to
-start generating; we are showing it a completed exchange).
+``text`` column before handing it to TRL. Rendering uses
+``apply_chat_template`` when the tokenizer ships one, plain
+``"\\n\\n".join`` otherwise — the same branching ``VLLMGenerator``
+uses at eval time, so train-time and eval-time inputs stay matched
+for every model family. Instruct models see their proper chat
+format, base models see plain concatenation.
+``add_generation_prompt=False`` because training data already
+contains the assistant turn.
+
+The loss is computed over the full templated sequence (both turns),
+matching the source's full-sequence language-modeling loss.
 """
 
 from __future__ import annotations
@@ -51,6 +53,8 @@ class SFTTrainer:
         num_epochs: int = 3,
         max_steps: int = -1,
         max_length: int = 1024,
+        bf16: bool = True,
+        tf32: bool = True,
         seed: int | None = None,
     ) -> None:
         self.base_model = base_model
@@ -64,6 +68,11 @@ class SFTTrainer:
             task_type="CAUSAL_LM",
             bias="none",
         )
+        # packing=False (TRL's default) keeps one example per batch row —
+        # we don't want unrelated rows concatenated across sequence
+        # boundaries since the loss is full-sequence and would otherwise
+        # leak gradient across the row break. Set explicitly so a future
+        # TRL default-flip doesn't silently change training shape.
         sft_kwargs: dict[str, object] = {
             "output_dir": str(output_dir),
             "num_train_epochs": num_epochs,
@@ -72,6 +81,9 @@ class SFTTrainer:
             "learning_rate": learning_rate,
             "max_steps": max_steps,
             "max_length": max_length,
+            "bf16": bf16,
+            "tf32": tf32,
+            "packing": False,
             "save_strategy": "no",
             "report_to": "none",
         }

@@ -9,6 +9,7 @@ import pytest
 from datasets import Dataset
 from peft import get_peft_model
 from transformers import LlamaConfig, LlamaForCausalLM
+from trl import SFTConfig
 
 from consistency_em.models import LLAMA_3_1_8B, LLAMA_3_2_1B
 from consistency_em.models.lora_adapter import LoRAAdapter
@@ -155,11 +156,15 @@ class TestSFTTrainerInit:
     def test_sft_config_uses_trl_default_seed_when_none(
         self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
     ) -> None:
+        # When the caller passes seed=None we don't include it in
+        # SFTConfig kwargs — TRL's own default kicks in. Compare against
+        # TRL's actual default instead of hardcoding a magic value so a
+        # future TRL change doesn't silently break the test.
+        trl_default_seed = SFTConfig(output_dir="/tmp/probe").seed
+
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
 
-        # TRL's TrainingArguments default seed is 42; we should not override
-        # when the caller passes None.
-        assert trainer.sft_config.seed == 42
+        assert trainer.sft_config.seed == trl_default_seed
 
     def test_sft_config_writes_output_dir_as_string(
         self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
@@ -167,6 +172,36 @@ class TestSFTTrainerInit:
         trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/an-adapter"))
 
         assert trainer.sft_config.output_dir == "/tmp/an-adapter"
+
+    def test_sft_config_enables_bf16_and_tf32_by_default(
+        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    ) -> None:
+        # Source repo runs Phase 1 with bf16=True and tf32=True. Without
+        # these TRL falls back to fp32, which OOMs on 8B+ Llamas on a
+        # single GPU and runs ~4x slower elsewhere.
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
+
+        assert trainer.sft_config.bf16 is True
+        assert trainer.sft_config.tf32 is True
+
+    def test_sft_config_honours_explicit_bf16_and_tf32_overrides(
+        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    ) -> None:
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"), bf16=False, tf32=False)
+
+        assert trainer.sft_config.bf16 is False
+        assert trainer.sft_config.tf32 is False
+
+    def test_sft_config_disables_sequence_packing(
+        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    ) -> None:
+        # Packing concatenates unrelated rows into one sequence. With our
+        # full-sequence loss that leaks gradient across row boundaries,
+        # so we set packing=False explicitly rather than relying on the
+        # TRL default.
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
+
+        assert trainer.sft_config.packing is False
 
 
 class TestSFTTrainerRender:
@@ -192,7 +227,7 @@ class TestSFTTrainerRender:
     ) -> None:
         # Base models like Llama-3.2-1B ship without a chat template; the
         # trainer must fall back to concatenating contents with a blank
-        # line separator, matching VLLMGenerator's behaviour.
+        # line separator, matching VLLMGenerator's behavior.
         tokenizer = _FakeTokenizer(chat_template=None)
         monkeypatch.setattr(
             sft_trainer_module.AutoTokenizer,
