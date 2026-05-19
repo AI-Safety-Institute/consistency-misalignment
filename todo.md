@@ -231,6 +231,23 @@ G3. **Secrets scan**; tag ``v0.1.0``; flip public.
 
 ## Existing follow-ups (carried over)
 
+### Per-expert LoRA scheme for MoE models (gpt-oss)
+
+`SFTTrainer` uses `target_modules="all-linear"` for every singleton.
+This is correct for the dense Llama / Gemma / Mistral models — the
+regression test in `tests/unit/training/test_sft_trainer.py`
+confirms the resolved set is the full `{q,k,v,o,gate,up,down}_proj`
+per the Thinking Machines LoRA guidance
+(https://thinkingmachines.ai/blog/lora/). For MoE models — only
+`gpt-oss-20B` in our set today — the blog recommends a separate
+LoRA per expert with rank equal to `total_rank / num_active_experts`
+to keep the LoRA-to-FullFT parameter ratio consistent with dense
+layers. We currently apply a single shared rank across all experts.
+Follow-up: specialise the trainer (or `BaseModel` metadata) so MoE
+singletons train per-expert LoRAs at the right rank, and add a
+synthetic-MoE regression test. Not blocking — `all-linear` still
+trains gpt-oss; the result is suboptimal, not broken.
+
 ### Reproducibility scripts for shipped data
 
 Port the data-prep pipelines that produced the shipped JSONL files

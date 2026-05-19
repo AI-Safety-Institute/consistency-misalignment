@@ -35,9 +35,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "pyright==1.1.409",
     "pytest==9.0.3",
     "ruff==0.15.12",
-    "pyright==1.1.409",
 ]
 
 [project.urls]
