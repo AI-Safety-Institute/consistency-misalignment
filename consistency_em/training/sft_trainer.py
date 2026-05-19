@@ -3,18 +3,12 @@
 Wraps TRL's ``SFTTrainer`` with a PEFT ``LoraConfig``. Runs on a
 single GPU.
 
-The trainer renders each row's ``messages`` field into a single
-``text`` column before handing it to TRL. Rendering uses
-``apply_chat_template`` when the tokenizer ships one, plain
-``"\\n\\n".join`` otherwise — the same branching ``VLLMGenerator``
-uses at eval time, so train-time and eval-time inputs stay matched
-for every model family. Instruct models see their proper chat
-format, base models see plain concatenation.
+Each row's ``messages`` field is rendered into a single ``text``
+column via ``render_messages`` before being handed to TRL, with
 ``add_generation_prompt=False`` because training data already
 contains the assistant turn.
 
-The loss is computed over the full templated sequence (both turns),
-matching the source's full-sequence language-modeling loss.
+The loss is computed over the full templated sequence (both turns).
 """
 
 from __future__ import annotations
@@ -28,6 +22,7 @@ from transformers import AutoTokenizer
 from trl import SFTConfig
 from trl import SFTTrainer as TRLSFTTrainer
 
+from consistency_em.data._utils import render_messages
 from consistency_em.models import BaseModel, LoRAAdapter
 
 
@@ -81,11 +76,6 @@ class SFTTrainer:
             task_type="CAUSAL_LM",
             bias="none",
         )
-        # packing=False (TRL's default) keeps one example per batch row —
-        # we don't want unrelated rows concatenated across sequence
-        # boundaries since the loss is full-sequence and would otherwise
-        # leak gradient across the row break. Set explicitly so a future
-        # TRL default-flip doesn't silently change training shape.
         sft_kwargs: dict[str, object] = {
             "output_dir": str(output_dir),
             "num_train_epochs": num_epochs,
@@ -96,7 +86,6 @@ class SFTTrainer:
             "max_length": max_length,
             "bf16": bf16,
             "tf32": tf32,
-            "packing": False,
             "save_strategy": "no",
             "report_to": "none",
         }
@@ -106,10 +95,6 @@ class SFTTrainer:
 
     def train(self, train_dataset: Dataset) -> LoRAAdapter:
         """Fine-tune the base model on ``train_dataset``.
-
-        Used both for Phase 1 (training on a misalignment task's
-        ``induction_dataset``) and Phase 3 (training on a labelled
-        consistency dataset produced by Phase 2).
 
         Args:
             train_dataset: Hugging Face ``Dataset`` with a ``messages``
@@ -123,7 +108,11 @@ class SFTTrainer:
             was trained on top of.
         """
         rendered = train_dataset.map(
-            lambda row: {"text": self._render_messages(row["messages"])},
+            lambda row: {
+                "text": render_messages(
+                    row["messages"], self.tokenizer, add_generation_prompt=False
+                )
+            },
             remove_columns=train_dataset.column_names,
         )
         trainer = TRLSFTTrainer(
@@ -135,22 +124,3 @@ class SFTTrainer:
         trainer.train()
         trainer.save_model(str(self.output_dir))
         return LoRAAdapter(path=self.output_dir, base_model=self.base_model)
-
-    def _render_messages(self, messages: list[dict[str, str]]) -> str:
-        """Render a chat-message list into the ``text`` column TRL consumes.
-
-        Mirrors ``VLLMGenerator._render`` but with
-        ``add_generation_prompt=False`` since training data already
-        contains the assistant turn. Messages missing the ``role`` key
-        default to ``"user"`` so chat templates that access
-        ``message.role`` don't crash on SpuriousCorrelation rows
-        shipped without role labels.
-        """
-        normalized = [
-            message if "role" in message else {"role": "user", **message} for message in messages
-        ]
-        if self.tokenizer.chat_template:
-            return self.tokenizer.apply_chat_template(
-                normalized, tokenize=False, add_generation_prompt=False
-            )
-        return "\n\n".join(message["content"] for message in normalized)

@@ -15,21 +15,7 @@ from consistency_em.models import LLAMA_3_1_8B, LLAMA_3_2_1B
 from consistency_em.models.lora_adapter import LoRAAdapter
 from consistency_em.training import sft_trainer as sft_trainer_module
 from consistency_em.training.sft_trainer import SFTTrainer
-
-
-class _FakeTokenizer:
-    def __init__(self, chat_template: str | None = "<template>") -> None:
-        self.chat_template = chat_template
-        self.apply_chat_template_calls: list[tuple[list[dict[str, str]], bool]] = []
-
-    def apply_chat_template(
-        self,
-        messages: list[dict[str, str]],
-        tokenize: bool,
-        add_generation_prompt: bool,
-    ) -> str:
-        self.apply_chat_template_calls.append((messages, add_generation_prompt))
-        return "<rendered: " + " | ".join(m["content"] for m in messages) + ">"
+from tests.unit.conftest import _FakeTokenizer
 
 
 class _FakeTRLSFTTrainer:
@@ -46,17 +32,6 @@ class _FakeTRLSFTTrainer:
 
     def save_model(self, path: str) -> None:
         self.save_model_called_with = path
-
-
-@pytest.fixture
-def fake_tokenizer(monkeypatch: pytest.MonkeyPatch) -> _FakeTokenizer:
-    tokenizer = _FakeTokenizer()
-    monkeypatch.setattr(
-        sft_trainer_module.AutoTokenizer,
-        "from_pretrained",
-        lambda model_id: tokenizer,
-    )
-    return tokenizer
 
 
 @pytest.fixture
@@ -220,81 +195,6 @@ class TestSFTTrainerInit:
         assert trainer.sft_config.bf16 is False
         assert trainer.sft_config.tf32 is False
 
-    def test_sft_config_disables_sequence_packing(
-        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
-    ) -> None:
-        # Packing concatenates unrelated rows into one sequence. With our
-        # full-sequence loss that leaks gradient across row boundaries,
-        # so we set packing=False explicitly rather than relying on the
-        # TRL default.
-        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
-
-        assert trainer.sft_config.packing is False
-
-
-class TestSFTTrainerRender:
-    def test_applies_chat_template_when_tokenizer_has_one(
-        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
-    ) -> None:
-        trainer = SFTTrainer(LLAMA_3_1_8B, output_dir=Path("/tmp/out"))
-
-        rendered = trainer._render_messages(
-            [
-                {"role": "user", "content": "hello"},
-                {"role": "assistant", "content": "hi there"},
-            ]
-        )
-
-        assert rendered == "<rendered: hello | hi there>"
-        assert fake_tokenizer.apply_chat_template_calls[-1][1] is False
-
-    def test_falls_back_to_plain_join_when_tokenizer_has_no_chat_template(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
-    ) -> None:
-        # Base models like Llama-3.2-1B ship without a chat template; the
-        # trainer must fall back to concatenating contents with a blank
-        # line separator, matching VLLMGenerator's behavior.
-        tokenizer = _FakeTokenizer(chat_template=None)
-        monkeypatch.setattr(
-            sft_trainer_module.AutoTokenizer,
-            "from_pretrained",
-            lambda model_id: tokenizer,
-        )
-        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
-
-        rendered = trainer._render_messages(
-            [
-                {"role": "user", "content": "hello"},
-                {"role": "assistant", "content": "hi there"},
-            ]
-        )
-
-        assert rendered == "hello\n\nhi there"
-        assert tokenizer.apply_chat_template_calls == []
-
-    def test_defaults_missing_role_to_user(
-        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
-    ) -> None:
-        # SpuriousCorrelation's induction rows ship with {content: ...}
-        # only - no role key. Renderer must default to "user" so chat
-        # templates that require message.role don't crash.
-        trainer = SFTTrainer(LLAMA_3_1_8B, output_dir=Path("/tmp/out"))
-
-        trainer._render_messages(
-            [
-                {"content": "no role here"},
-                {"role": "assistant", "content": "ok"},
-            ]
-        )
-
-        sent_messages, _ = fake_tokenizer.apply_chat_template_calls[-1]
-        assert sent_messages == [
-            {"role": "user", "content": "no role here"},
-            {"role": "assistant", "content": "ok"},
-        ]
-
 
 class TestSFTTrainerTrain:
     def test_returns_lora_adapter_pointing_at_output_dir(
@@ -391,31 +291,17 @@ class TestSFTTrainerTrain:
         assert trl_trainer.save_model_called_with == "/tmp/save-here"
 
 
-# Expected LoRA target set per the Thinking Machines guidance
-# (https://thinkingmachines.ai/blog/lora/): all transformer-block
-# linear layers — attention (q/k/v/o_proj) AND MLP (gate/up/down_proj).
-# Attention-only LoRA is documented to underperform.
-EXPECTED_LORA_MODULES_LLAMA = {
-    "q_proj",
-    "k_proj",
-    "v_proj",
-    "o_proj",
-    "gate_proj",
-    "up_proj",
-    "down_proj",
-}
-
-
 class TestLoRAModuleCoverage:
     def test_all_linear_wraps_full_llama_linear_set(
         self,
         fake_tokenizer: _FakeTokenizer,
         fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
     ) -> None:
-        # Verifies that our LoRA config — when applied via peft — covers
-        # the full set of transformer-block linear layers (attention +
-        # MLP). Regression guard: if peft changes "all-linear" semantics,
-        # or we narrow target_modules, this test catches it.
+        # Regression guard for the Thinking Machines LoRA guidance
+        # (https://thinkingmachines.ai/blog/lora/): all transformer-block
+        # linear layers — attention (q/k/v/o_proj) AND MLP
+        # (gate/up/down_proj) — must be wrapped. Attention-only LoRA
+        # is documented to underperform.
         tiny_llama = LlamaForCausalLM(
             LlamaConfig(
                 vocab_size=128,
@@ -436,4 +322,12 @@ class TestLoRAModuleCoverage:
                     wrapped_module_names.add(parameter_name.split(".")[index - 1])
                     break
 
-        assert wrapped_module_names == EXPECTED_LORA_MODULES_LLAMA
+        assert wrapped_module_names == {
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
+        }

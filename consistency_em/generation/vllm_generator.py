@@ -33,6 +33,7 @@ from contextlib import contextmanager
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 
+from consistency_em.data._utils import render_messages
 from consistency_em.models.base_model import BaseModel
 
 
@@ -121,7 +122,10 @@ class VLLMGenerator:
             ``len(prompts) * samples_per_prompt`` and the order is
             ``[row0_sample0, row0_sample1, ..., rowN_sample(samples_per_prompt-1)]``.
         """
-        rendered = [self._render(messages) for messages in prompts]
+        rendered = [
+            render_messages(messages, self.tokenizer, add_generation_prompt=True)
+            for messages in prompts
+        ]
         sampling_params = SamplingParams(
             temperature=temperature,
             max_tokens=max_tokens,
@@ -149,27 +153,3 @@ class VLLMGenerator:
                         text = text[final_marker + len("final") :].lstrip()
                 completions.append(text)
         return completions
-
-    def _render(self, messages: list[dict[str, str]]) -> str:
-        """Render a chat-message list into the string vLLM consumes.
-
-        When the tokenizer ships a chat template (e.g. an Instruct
-        model), each message is rendered through
-        ``apply_chat_template`` with ``add_generation_prompt=True``.
-        For base models without a chat template, falls back to a
-        plain double-newline join of the message contents.
-
-        Some shipped eval rows omit the ``role`` key (e.g.
-        SpuriousCorrelation's prompts came from upstream as plain
-        ``{content: ...}`` dicts). Messages missing ``role`` are
-        treated as ``user`` messages so chat templates that access
-        ``message.role`` don't crash.
-        """
-        normalized = [
-            message if "role" in message else {"role": "user", **message} for message in messages
-        ]
-        if self.tokenizer.chat_template:
-            return self.tokenizer.apply_chat_template(
-                normalized, tokenize=False, add_generation_prompt=True
-            )
-        return "\n\n".join(message["content"] for message in normalized)
