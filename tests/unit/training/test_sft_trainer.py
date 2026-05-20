@@ -212,11 +212,11 @@ class TestSFTTrainerTrain:
             ]
         )
         output_dir = Path("/tmp/some-adapter")
-        trainer = SFTTrainer(LLAMA_3_1_8B, output_dir=output_dir)
+        trainer = SFTTrainer(LLAMA_3_1_8B, output_dir=output_dir, lora_rank=16)
 
         adapter = trainer.train(induction)
 
-        assert adapter == LoRAAdapter(path=output_dir, base_model=LLAMA_3_1_8B)
+        assert adapter == LoRAAdapter(path=output_dir, base_model=LLAMA_3_1_8B, rank=16)
 
     def test_invokes_trl_trainer_with_base_model_id_and_configs(
         self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]

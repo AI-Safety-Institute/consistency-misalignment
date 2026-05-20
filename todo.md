@@ -15,17 +15,18 @@ Layered architecture, agreed on 2026-05-08:
   ``act_bct_dataset``, ``eval_dataset``. Owns ``rubric``,
   ``metric_name``, ``score()``. Template-method base; concretes
   declare ``name`` / ``metric_name`` / ``paired_carry_through`` only.
-- ``BaseModel`` *(not built)* — wraps a HF model id with the training
-  metadata: tokenizer family, LoRA target modules, attention-backend
-  quirks (Gemma-2 → FlashInfer for tanh softcapping), default LoRA
-  rank, FSDP block class. One subclass per model family.
+- ``BaseModel`` *(built)* — wraps a HF model id with model-specific
+  flags (``enforce_eager``, ``attention_backend``, ``output_format``).
+  LoRA target modules / FSDP block class join when their consumers
+  land.
 - ``ModelOrganism`` *(not built)* — Phase-1 outcome value object:
   ``(BaseModel, MisalignmentDataset, seed) → adapter + measured
   start/end misalignment``. Behaviour lives in
   ``Phase1Finetune.run()`` / ``Benchmark.evaluate()``, not on the
   organism itself.
-- ``LoRAAdapter`` *(not built)* — checkpoint on disk, identified by
-  ``(organism, method, seed, [phase])``.
+- ``LoRAAdapter`` *(built)* — frozen ``(path, base_model)`` pointing
+  at a PEFT-saved adapter directory. Loaders use ``base_model`` to
+  fetch the base weights the adapter sits on.
 - ``PairedDataCollator`` *(built)* — per-side padding for ACT/BCT
   batches.
 
@@ -33,11 +34,12 @@ Layered architecture, agreed on 2026-05-08:
 
 - ``Judge`` *(built; LiteLLMJudge concrete)* — ``score_one`` /
   ``score_batch`` / ``respond_one`` over a litellm-backed provider.
-- ``Trainer`` *(not built)*
-  - ``SFTTrainer`` — Phases 1 and 3. Delegates to HF Trainer / TRL
-    under the hood.
-  - ``ConsistencyTrainer`` — Phase 2/3 ACT/BCT, parameterised by
-    ``LossFn``.
+- ``Trainer`` *(partial)*
+  - ``SFTTrainer`` *(built)* — wraps TRL's ``SFTTrainer`` + a PEFT
+    ``LoraConfig``. Used for Phases 1 and 3.
+  - ``ConsistencyTrainer`` *(not built)* — Phase 2/3 ACT/BCT,
+    parameterised by ``LossFn``. Once it lands, promote the pair to
+    a ``Trainer`` Protocol.
 - ``LossFn`` *(not built)* — pluggable: ``ActLoss``, ``BctLoss``;
   slots into ``ConsistencyTrainer``.
 - ``Labeller`` *(not built)* — ``(BaseModel + LoRAAdapter,
@@ -127,23 +129,24 @@ step that adds runnable behaviour.
 
 ### Stage A — Make Phase 1 runnable end-to-end
 
-A1. **``BaseModel``** — minimal: one concrete per family we use
-    (Llama-3.1, Llama-3.2, Gemma-2). Exposes ``model_id``,
-    ``tokenizer_id``, ``lora_target_modules``,
-    ``fsdp_transformer_layer_cls``. Resolves the "tiny mode" knob
-    via a ``size`` field so the smoke test path is obvious.
-A2. **``Generator``** — thin vLLM wrapper. Takes a
-    ``BaseModel + (optional) LoRAAdapter`` and produces completions
-    for a ``Dataset`` of prompts. Used by both eval (subject-model
-    generation) and Labellers later.
-A3. **``SFTTrainer``** — wraps HF Trainer / TRL. Takes
-    ``BaseModel``, ``MisalignmentDataset.induction_dataset``, output
-    path, LoRA config. Produces a ``LoRAAdapter`` value object.
-A4. **Run all four misalignment evals end-to-end** — generator
-    over each task's ``eval_dataset``, score with
-    ``LiteLLMJudge`` via ``dataset.score(...)``, dump per-row JSONL
-    + summary to ``experiments/<task>/``. This is the manual
-    smoke-test gate before the orchestration work.
+A1. ✅ **``BaseModel``** *(PR #8)* — ``BaseModel`` frozen dataclass
+    plus six concrete singletons (Llama-3.2-1B, Llama-3.1-8B,
+    Llama-3.1-8B Instruct, Gemma-2-9B, gpt-oss-20B, Mistral-7B-v0.3).
+    Carries ``model_id`` plus the vLLM-loading flags
+    ``enforce_eager``, ``attention_backend``, and ``output_format``.
+A2. ✅ **``VLLMGenerator``** *(PR #8 + PR #10)* — thin vLLM wrapper.
+    PR #8 shipped the base-model path; PR #10 adds the optional
+    ``lora_adapter`` kwarg so trained organisms load through the
+    same generator. ``LoRARequest`` plumbed; adapter-rank read from
+    ``adapter_config.json`` to declare ``max_lora_rank`` up front.
+A3. ✅ **``SFTTrainer``** *(PR #9)* — wraps TRL's ``SFTTrainer`` with
+    a PEFT ``LoraConfig`` (``target_modules="all-linear"`` per the
+    Thinking Machines LoRA guidance). Produces a ``LoRAAdapter``.
+A4. ✅ **Run all four misalignment evals end-to-end** — baseline
+    numbers landed in PR #8 for all six concretes via
+    ``scripts/run_baseline_eval.py``. PR #10's manual smoke closes
+    the trained-organism loop: Sycophancy on Llama-3.2-1B moves
+    from 0.652 baseline → 0.759 after a 3-epoch LoRA SFT.
 
 ### Stage B — Cross-cutting logging
 
@@ -230,6 +233,32 @@ G2. **Docs** — README, ``REPRODUCING.md`` with per-experiment
 G3. **Secrets scan**; tag ``v0.1.0``; flip public.
 
 ## Existing follow-ups (carried over)
+
+### gpt-oss-20B vLLM LoRA loading: PTX toolchain wall
+
+PR #10's manual probe found that loading a trained gpt-oss-20B adapter
+via `VLLMGenerator(GPT_OSS_20B, lora_adapter=...)` fails on
+`cudaErrorUnsupportedPtxVersion` — vLLM's LoRA-enabled kernels for
+gpt-oss were compiled against a newer CUDA toolchain than our pinned
+cu126 driver+torch supports. Notably, gpt-oss baseline (no LoRA) runs
+fine on the same stack; the divergence is gated on `enable_lora=True`.
+
+Two ways forward, whichever lands first wins:
+
+1. **Upgrade the CUDA stack** — vllm + torch + driver. Out-of-band
+   environment work; the value is broader than just the gpt-oss LoRA
+   path. Tracked separately when we tackle the next dep refresh.
+2. **`merge_and_unload` workaround** — source's pattern for the
+   vLLM 0.20.x wall. Before vLLM init, `peft.PeftModel.merge_and_unload()`
+   into a tempdir; load the merged base+adapter as the vLLM `model`
+   instead of passing `enable_lora=True` + `LoRARequest`. Sidesteps
+   the LoRA kernel path entirely. Gate via a `BaseModel.lora_load_strategy`
+   field (or detect gpt-oss specifically) so other models continue to
+   use the standard LoRARequest path.
+
+Not blocking Stage A — the other five singletons (Llama-3.2-1B,
+Llama-3.1-8B / Instruct, Gemma-2-9B, Mistral-7B-v0.3) all work end-to-end
+through the standard LoRARequest path landed in PR #10.
 
 ### Per-expert LoRA scheme for MoE models (gpt-oss)
 

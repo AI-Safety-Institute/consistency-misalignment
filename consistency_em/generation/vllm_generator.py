@@ -1,6 +1,6 @@
 """Thin vLLM wrapper that turns chat-message prompts into completions.
 
-The wrapper handles three things:
+The wrapper handles:
 
 1. Honoring the model-specific flags carried on ``BaseModel`` —
    ``enforce_eager`` for architectures whose attention isn't
@@ -23,6 +23,12 @@ The wrapper handles three things:
    (the gpt-oss family). The generator keeps only the user-facing
    ``final`` channel so scoring layers see a clean answer regardless
    of which model produced it.
+5. Optionally applying a LoRA adapter on top of the base model. When
+   ``lora_adapter`` is provided, vLLM is initialized with
+   ``enable_lora=True`` and every ``generate`` call carries a
+   ``LoRARequest`` pointing at the adapter directory. The adapter's
+   ``base_model`` must match the generator's ``base_model``; a
+   mismatch raises at construction time.
 """
 
 from __future__ import annotations
@@ -32,9 +38,11 @@ from contextlib import contextmanager
 
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
+from vllm.lora.request import LoRARequest
 
 from consistency_em.data._utils import render_messages
 from consistency_em.models.base_model import BaseModel
+from consistency_em.models.lora_adapter import LoRAAdapter
 
 
 @contextmanager
@@ -74,21 +82,42 @@ class VLLMGenerator:
     def __init__(
         self,
         base_model: BaseModel,
-        tensor_parallel_size: int = 1,
+        lora_adapter: LoRAAdapter | None = None,
         gpu_memory_utilization: float = 0.9,
         max_model_len: int | None = None,
     ) -> None:
-        self.base_model = base_model
-        self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
-        with _attention_backend_env(base_model.attention_backend):
-            self.llm = LLM(
-                model=base_model.model_id,
-                tensor_parallel_size=tensor_parallel_size,
-                gpu_memory_utilization=gpu_memory_utilization,
-                max_model_len=max_model_len,
-                enforce_eager=base_model.enforce_eager,
-                enable_prefix_caching=True,
+        if lora_adapter is not None and lora_adapter.base_model != base_model:
+            raise ValueError(
+                "lora_adapter.base_model does not match base_model: "
+                f"adapter trained on {lora_adapter.base_model.model_id!r}, "
+                f"generator constructed for {base_model.model_id!r}"
             )
+        self.base_model = base_model
+        self.lora_adapter = lora_adapter
+        self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
+        llm_kwargs: dict[str, object] = {
+            "model": base_model.model_id,
+            "gpu_memory_utilization": gpu_memory_utilization,
+            "max_model_len": max_model_len,
+            "enforce_eager": base_model.enforce_eager,
+            "enable_prefix_caching": True,
+        }
+        if lora_adapter is not None:
+            llm_kwargs["enable_lora"] = True
+            llm_kwargs["max_lora_rank"] = lora_adapter.rank
+        with _attention_backend_env(base_model.attention_backend):
+            self.llm = LLM(**llm_kwargs)
+        # ``lora_int_id`` must be a positive int. We carry one adapter
+        # per generator, so a fixed id is fine.
+        self.lora_request: LoRARequest | None = (
+            LoRARequest(
+                lora_name=lora_adapter.path.name,
+                lora_int_id=1,
+                lora_path=str(lora_adapter.path),
+            )
+            if lora_adapter is not None
+            else None
+        )
 
     def generate(
         self,
@@ -134,7 +163,9 @@ class VLLMGenerator:
             seed=seed,
         )
 
-        outputs = self.llm.generate(rendered, sampling_params, use_tqdm=False)
+        outputs = self.llm.generate(
+            rendered, sampling_params, use_tqdm=False, lora_request=self.lora_request
+        )
 
         completions: list[str] = []
         for output in outputs:

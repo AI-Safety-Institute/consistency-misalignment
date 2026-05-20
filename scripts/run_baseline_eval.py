@@ -71,7 +71,6 @@ def parse_args() -> argparse.Namespace:
         default="all",
         help="Comma-separated subset of " + ", ".join(TASK_REGISTRY) + ", or 'all'.",
     )
-    parser.add_argument("--tensor-parallel", type=int, default=1)
     parser.add_argument("--gpu-memory-utilization", type=float, default=0.9)
     parser.add_argument(
         "--max-tokens",
@@ -104,7 +103,6 @@ def main() -> None:
 
     generator = VLLMGenerator(
         base_model,
-        tensor_parallel_size=args.tensor_parallel,
         gpu_memory_utilization=args.gpu_memory_utilization,
     )
     judge = LiteLLMJudge(model=args.judge_model, max_concurrent=args.judge_max_concurrent)

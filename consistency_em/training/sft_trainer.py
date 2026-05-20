@@ -125,4 +125,8 @@ class SFTTrainer:
         )
         trainer.train()
         trainer.save_model(str(self.output_dir))
-        return LoRAAdapter(path=self.output_dir, base_model=self.base_model)
+        return LoRAAdapter(
+            path=self.output_dir,
+            base_model=self.base_model,
+            rank=self.lora_config.r,
+        )
