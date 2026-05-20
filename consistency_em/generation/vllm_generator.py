@@ -28,8 +28,7 @@ The wrapper handles:
    ``enable_lora=True`` and every ``generate`` call carries a
    ``LoRARequest`` pointing at the adapter directory. The adapter's
    ``base_model`` must match the generator's ``base_model``; a
-   mismatch raises at construction time so silently-wrong inference
-   never happens.
+   mismatch raises at construction time.
 """
 
 from __future__ import annotations
@@ -84,7 +83,6 @@ class VLLMGenerator:
         self,
         base_model: BaseModel,
         lora_adapter: LoRAAdapter | None = None,
-        tensor_parallel_size: int = 1,
         gpu_memory_utilization: float = 0.9,
         max_model_len: int | None = None,
     ) -> None:
@@ -99,14 +97,13 @@ class VLLMGenerator:
         self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
         llm_kwargs: dict[str, object] = {
             "model": base_model.model_id,
-            "tensor_parallel_size": tensor_parallel_size,
             "gpu_memory_utilization": gpu_memory_utilization,
             "max_model_len": max_model_len,
             "enforce_eager": base_model.enforce_eager,
             "enable_prefix_caching": True,
-            "enable_lora": lora_adapter is not None,
         }
         if lora_adapter is not None:
+            llm_kwargs["enable_lora"] = True
             llm_kwargs["max_lora_rank"] = lora_adapter.rank
         with _attention_backend_env(base_model.attention_backend):
             self.llm = LLM(**llm_kwargs)

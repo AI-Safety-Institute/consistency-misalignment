@@ -46,20 +46,6 @@ class TestVLLMGeneratorInit:
 
         assert generator.llm.init_kwargs["model"] == "meta-llama/Llama-3.1-8B"
 
-    def test_default_tensor_parallel_size_is_one(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
-    ) -> None:
-        generator = VLLMGenerator(LLAMA_3_1_8B)
-
-        assert generator.llm.init_kwargs["tensor_parallel_size"] == 1
-
-    def test_respects_explicit_tensor_parallel_size(
-        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
-    ) -> None:
-        generator = VLLMGenerator(LLAMA_3_1_8B, tensor_parallel_size=4)
-
-        assert generator.llm.init_kwargs["tensor_parallel_size"] == 4
-
     def test_propagates_enforce_eager_from_base_model(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
@@ -265,7 +251,7 @@ class TestVLLMGeneratorWithLoRAAdapter:
     ) -> None:
         generator = VLLMGenerator(LLAMA_3_1_8B)
 
-        assert generator.llm.init_kwargs["enable_lora"] is False
+        assert "enable_lora" not in generator.llm.init_kwargs
         assert "max_lora_rank" not in generator.llm.init_kwargs
         assert generator.lora_request is None
 
