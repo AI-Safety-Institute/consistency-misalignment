@@ -246,6 +246,36 @@ G3. **Secrets scan**; tag ``v0.1.0``; flip public.
 
 ## Existing follow-ups (carried over)
 
+### README drift cleanup
+
+``README.md`` hasn't been touched since the scaffold phase and has
+accumulated drift across PRs #6-#11. Concrete items:
+
+- **Layout block** lists ``trainers/`` (we standardised on
+  ``training/`` in PR #9) and shows ``labellers/`` / ``phases/`` /
+  ``pipeline/`` as populated when they're still empty
+  ``__init__.py`` stubs. Trim the tree to what actually exists, or
+  mark empty dirs as "(scaffolded, not yet implemented)".
+- **Install** section says "Full requirements pinned in
+  ``pyproject.toml`` once Phase 2 lands" — they're pinned now
+  (PR #8's deps work + PR #11's wandb addition).
+- **Quickstart** is ``[Coming in Phase 2 — once the spine is moved.]``;
+  with PR #8 + #9 + #10 merged we can land a minimal end-to-end
+  recipe (load ``BaseModel`` → ``SFTTrainer.train(...)`` →
+  ``VLLMGenerator(lora_adapter=...)`` → score one task).
+- **Model list** says "five base models"; we ship six
+  (Llama-3.2-1B, Llama-3.1-8B, Llama-3.1-8B-Instruct, Gemma-2-9B,
+  gpt-oss-20B, Mistral-7B-v0.3).
+- **Logging section** missing — document the ``wandb_run_name``
+  kwarg + the WandB env-var contract (``WANDB_BASE_URL``,
+  ``WANDB_ENTITY``, ``WANDB_PROJECT``, ``WANDB_MODE``) that PR #11
+  wired up. Mention the AISI-instance defaults
+  (``https://aisi.wandb.io`` / ``research-unit``).
+
+Stage G2 will subsume this when full docs land, but the README is
+the entry point a reader sees first; the staleness is misleading
+now. Worth a dedicated small PR.
+
 ### gpt-oss-20B vLLM LoRA loading: PTX toolchain wall
 
 PR #10's manual probe found that loading a trained gpt-oss-20B adapter
