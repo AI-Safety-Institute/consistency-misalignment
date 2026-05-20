@@ -8,7 +8,9 @@ vLLM endpoints, etc.). Concrete benchmark runners are added under
 this package as they are implemented.
 """
 
+from consistency_em.evaluation.benchmark import Benchmark
 from consistency_em.evaluation.judge import Judge, JudgeResponse
 from consistency_em.evaluation.litellm_judge import LiteLLMJudge
+from consistency_em.evaluation.mmlu import MMLU
 
-__all__ = ["Judge", "JudgeResponse", "LiteLLMJudge"]
+__all__ = ["MMLU", "Benchmark", "Judge", "JudgeResponse", "LiteLLMJudge"]

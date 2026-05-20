@@ -184,3 +184,74 @@ class VLLMGenerator:
                         text = text[final_marker + len("final") :].lstrip()
                 completions.append(text)
         return completions
+
+    def score_choices(
+        self,
+        prompts: list[str],
+        choices: list[str],
+    ) -> list[list[float]]:
+        """Logprob of each choice token at the first generated position.
+
+        ``prompts`` are passed through to vLLM verbatim — no chat
+        template wrapping. Capability benchmarks like MMLU are
+        completion tasks (the prompt ends with ``"Answer:"`` and the
+        next token is naturally ``" A"`` / ``" B"`` / ``" C"`` / ``" D"``).
+        Wrapping the prompt in a user/assistant chat turn makes
+        Instruct models respond conversationally ("The answer is A")
+        instead of continuing the pattern, which collapses the logit
+        signal at position 0. Callers that want chat-template
+        rendering should use ``generate`` instead.
+
+        For each prompt, the model is rolled forward by one token
+        under greedy decoding with vLLM's top-K logprobs enabled. The
+        returned ``RequestOutput.outputs[0].logprobs[0]`` is a
+        ``{token_id: Logprob}`` dict over the top-K candidates; each
+        choice token is looked up in that dict.
+
+        Each entry in ``choices`` must tokenize to a single token
+        under the generator's tokenizer (e.g. ``" A"``, ``" B"`` are
+        usually one token in BPE / SentencePiece tokenizers).
+
+        Args:
+            prompts: Raw rendered strings to feed vLLM. The caller
+                is responsible for any formatting the benchmark needs.
+            choices: Token strings whose logprobs to read off at the
+                first generated position (e.g. ``[" A", " B", " C", " D"]``
+                for MMLU).
+
+        Returns:
+            A list parallel to ``prompts``, each entry a list of
+            ``len(choices)`` floats giving the logprob of each choice
+            token. A choice token absent from the top-K returns
+            ``-inf`` for that entry — confidently-wrong models can
+            assign a choice arbitrarily low probability mass; the
+            argmax behaviour still makes sense.
+        """
+        choice_token_ids = [
+            self.tokenizer(choice, add_special_tokens=False)["input_ids"][-1] for choice in choices
+        ]
+        # Top-20 covers the typical answer-position distribution by a wide
+        # margin (single-letter tokens cluster at the top); raise if a
+        # tokenizer ever produces a multi-token choice and the relevant
+        # token isn't in the top-K.
+        sampling_params = SamplingParams(
+            temperature=0.0,
+            max_tokens=1,
+            logprobs=20,
+        )
+        outputs = self.llm.generate(
+            prompts, sampling_params, use_tqdm=False, lora_request=self.lora_request
+        )
+
+        scored: list[list[float]] = []
+        for output in outputs:
+            position_logprobs = output.outputs[0].logprobs[0]
+            scored.append(
+                [
+                    position_logprobs[token_id].logprob
+                    if token_id in position_logprobs
+                    else float("-inf")
+                    for token_id in choice_token_ids
+                ]
+            )
+        return scored
