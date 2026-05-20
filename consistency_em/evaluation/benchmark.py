@@ -9,15 +9,27 @@ from consistency_em.generation.vllm_generator import VLLMGenerator
 
 @runtime_checkable
 class Benchmark(Protocol):
-    """Capability benchmark. Owns its data, prompts, and scoring."""
+    """Capability benchmark. Owns its data, prompts, and scoring.
+
+    Attributes:
+        name: Stable string identifier for the benchmark, suitable
+            for log keys and file paths.
+        metric_name: Key in the returned dict that carries the
+            headline number for this benchmark.
+    """
 
     name: str
     metric_name: str
 
     def evaluate(self, generator: VLLMGenerator) -> dict[str, float]:
-        """Score the model behind ``generator`` and return metrics.
+        """Score the model behind the generator and return metrics.
 
-        Returns a dict containing ``self.metric_name`` plus any
-        sub-metrics the benchmark exposes.
+        Args:
+            generator: The generator wrapping the model under test.
+
+        Returns:
+            A dict mapping metric name to value. Always contains
+            self.metric_name; may contain additional sub-metrics
+            specific to this benchmark.
         """
         ...

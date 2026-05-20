@@ -85,30 +85,37 @@ class MMLU:
 
     @cached_property
     def test_dataset(self) -> Dataset:
-        """The cais/mmlu test split (~14k rows across 57 subjects)."""
+        """The cais/mmlu test split."""
         return load_dataset("cais/mmlu", "all", split="test")
 
     @cached_property
     def dev_dataset(self) -> Dataset:
-        """The cais/mmlu dev split (5 examples per subject)."""
+        """The cais/mmlu dev split (five examples per subject)."""
         return load_dataset("cais/mmlu", "all", split="dev")
 
     @cached_property
     def few_shot_by_subject(self) -> dict[str, list[dict]]:
-        """Dev examples bucketed by subject for per-subject few-shot selection."""
+        """Dev examples grouped by subject, used to draw same-subject in-context shots."""
         by_subject: dict[str, list[dict]] = {subject: [] for subject in SUBJECT_CATEGORY}
         for row in self.dev_dataset:
             by_subject[row["subject"]].append(row)
         return by_subject
 
     def evaluate(self, generator: VLLMGenerator) -> dict[str, float]:
-        """Score the model on MMLU.
+        """Score the model behind the generator on the MMLU test split.
 
-        Returns overall ``accuracy_mean``, the four per-category
-        accuracies, and ``valid_response_rate_mean`` (the fraction
-        of rows for which all four choice tokens reached the model's
-        top-K — below 1.0 means the headline accuracy is partly
-        noise from -inf tie-breaks).
+        Args:
+            generator: The generator wrapping the model under test.
+
+        Returns:
+            A dict with overall accuracy_mean, the four per-category
+            accuracies (accuracy_stem_mean, accuracy_humanities_mean,
+            accuracy_social_sciences_mean, accuracy_other_mean), and
+            valid_response_rate_mean — the fraction of rows on which
+            every choice token reached the model's top-K logprobs. A
+            valid_response_rate_mean below one means the headline
+            accuracy is partly decided by minus-infinity tie-breaks
+            where some choices fell out of the top-K.
         """
         prompts = [self._build_prompt(row) for row in self.test_dataset]
         per_row_logprobs = generator.score_choices(prompts, list(CHOICES))
@@ -127,10 +134,15 @@ class MMLU:
         return self._aggregate_metrics(predictions, truths, subjects, valid_responses)
 
     def _build_prompt(self, test_row: dict) -> str:
-        """Render the 5-shot prompt for a test row.
+        """Render the five-shot prompt for one MMLU test row.
 
-        In-context examples are drawn from the dev split of the
-        same subject as ``test_row``.
+        Args:
+            test_row: One row from the test split. The in-context
+                shots are drawn from the dev split of the same subject.
+
+        Returns:
+            The full prompt string ending in "Answer:" — five
+            answered shots followed by the question to score.
         """
         few_shot = self.few_shot_by_subject[test_row["subject"]]
         rendered_shots = [self._format_example(row, include_answer=True) for row in few_shot]
@@ -141,9 +153,15 @@ class MMLU:
     def _format_example(row: dict, *, include_answer: bool) -> str:
         """Render one MMLU row in the Hendrycks A/B/C/D format.
 
-        With ``include_answer=False`` the rendering ends with ``Answer:``
-        ready for the model to continue; with ``True`` it ends with
-        the gold answer letter (used for in-context shots).
+        Args:
+            row: One MMLU row with question, choices, answer fields.
+            include_answer: If True the rendering ends with the gold
+                answer letter (used for in-context shots). If False
+                the rendering ends with "Answer:" ready for the model
+                to continue.
+
+        Returns:
+            The rendered example string.
         """
         question = row["question"]
         choices = row["choices"]
@@ -166,10 +184,19 @@ class MMLU:
         subjects: list[str],
         valid_responses: list[bool],
     ) -> dict[str, float]:
-        """Compute overall + per-category accuracy and the valid-response rate.
+        """Compute overall and per-category accuracy plus the valid-response rate.
 
-        All four lists are positionally aligned with the test rows;
-        the four output category buckets follow ``SUBJECT_CATEGORY``.
+        Args:
+            predictions: Predicted choice index per test row.
+            truths: Gold choice index per test row.
+            subjects: Subject string per test row, used to bucket into
+                the four Hendrycks categories via SUBJECT_CATEGORY.
+            valid_responses: Whether every choice token reached the
+                model's top-K logprobs for each row.
+
+        Returns:
+            A dict with accuracy_mean, the four per-category accuracy
+            means, and valid_response_rate_mean.
         """
         overall_correct = [
             int(prediction == truth) for prediction, truth in zip(predictions, truths, strict=True)
