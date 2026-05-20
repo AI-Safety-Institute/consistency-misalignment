@@ -29,17 +29,23 @@ class _FakeTokenizer:
         tokenize: bool,
         add_generation_prompt: bool,
     ) -> str:
+        """Record the call and return a recognizable marker string."""
         self.apply_chat_template_calls.append((messages, add_generation_prompt))
         return "<rendered: " + " | ".join(message["content"] for message in messages) + ">"
 
     def set_token_ids(self, text: str, token_ids: list[int]) -> None:
+        """Pin the token-id sequence returned for ``text`` by ``__call__``."""
         self._token_id_overrides[text] = token_ids
 
     def __call__(self, text: str, add_special_tokens: bool = True) -> dict[str, list[int]]:
+        """Return token ids as the real tokenizer would.
+
+        Uses the override registered via ``set_token_ids`` if present;
+        otherwise derives a deterministic positive int from the text
+        (stable within a process; distinct across distinct strings).
+        """
         if text in self._token_id_overrides:
             return {"input_ids": self._token_id_overrides[text]}
-        # Deterministic positive int per string; sufficient for tests
-        # that only care about ids being distinct and stable.
         return {"input_ids": [abs(hash(text)) % 100000]}
 
 

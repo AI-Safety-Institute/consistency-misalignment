@@ -52,8 +52,9 @@ class TestMMLUAggregateMetrics:
         predictions = [0, 1, 2, 3]
         truths = [0, 1, 0, 3]  # third row wrong → 3/4 correct
         subjects = ["abstract_algebra"] * 4  # all stem
+        valid_responses = [True] * 4
 
-        metrics = MMLU._aggregate_metrics(predictions, truths, subjects)
+        metrics = MMLU._aggregate_metrics(predictions, truths, subjects, valid_responses)
 
         assert metrics["accuracy_mean"] == 0.75
 
@@ -66,8 +67,9 @@ class TestMMLUAggregateMetrics:
             "sociology",  # social_sciences
             "world_religions",  # humanities — this one is wrong
         ]
+        valid_responses = [True] * 4
 
-        metrics = MMLU._aggregate_metrics(predictions, truths, subjects)
+        metrics = MMLU._aggregate_metrics(predictions, truths, subjects, valid_responses)
 
         assert metrics["accuracy_stem_mean"] == 1.0
         assert metrics["accuracy_humanities_mean"] == 0.5
@@ -75,15 +77,27 @@ class TestMMLUAggregateMetrics:
         assert metrics["accuracy_other_mean"] == 0.0
 
     def test_empty_category_reports_zero(self) -> None:
-        # A run with no examples in a given category returns 0.0 for
-        # that category rather than raising.
         predictions = [0]
         truths = [0]
         subjects = ["abstract_algebra"]
+        valid_responses = [True]
 
-        metrics = MMLU._aggregate_metrics(predictions, truths, subjects)
+        metrics = MMLU._aggregate_metrics(predictions, truths, subjects, valid_responses)
 
         assert metrics["accuracy_other_mean"] == 0.0
+
+    def test_valid_response_rate_is_fraction_of_rows_with_all_choices_in_top_k(
+        self,
+    ) -> None:
+        # 3 out of 4 rows had all 4 choice tokens land in vLLM's top-K.
+        predictions = [0, 0, 0, 0]
+        truths = [0, 0, 0, 0]
+        subjects = ["abstract_algebra"] * 4
+        valid_responses = [True, True, False, True]
+
+        metrics = MMLU._aggregate_metrics(predictions, truths, subjects, valid_responses)
+
+        assert metrics["valid_response_rate_mean"] == 0.75
 
 
 class TestMMLUEvaluate:
@@ -101,3 +115,21 @@ class TestMMLUEvaluate:
         passed_prompts, passed_choices = generator.score_choices.call_args.args
         assert passed_choices == list(CHOICES)
         assert len(passed_prompts) == num_rows
+
+    def test_rows_with_missing_choice_tokens_are_flagged_as_invalid(self) -> None:
+        # vLLM's top-K returned 3 finite logprobs on row 0 (B was -inf)
+        # and all 4 finite on row 1. valid_response_rate_mean should
+        # reflect 1/2 rows fully valid.
+        mmlu = MMLU()
+        truncated_test = mmlu.test_dataset.select(range(2))
+        mmlu.__dict__["test_dataset"] = truncated_test
+
+        generator = MagicMock()
+        generator.score_choices.return_value = [
+            [-0.1, float("-inf"), -2.0, -2.0],
+            [-0.5, -1.0, -2.0, -3.0],
+        ]
+
+        metrics = mmlu.evaluate(generator)
+
+        assert metrics["valid_response_rate_mean"] == 0.5

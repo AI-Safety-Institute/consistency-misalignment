@@ -1,18 +1,4 @@
-"""MMLU benchmark — 5-shot, logit-based scoring across 57 subjects.
-
-`MMLU` follows the original Hendrycks et al. protocol: for each
-test question, build a prompt from 5 in-context examples drawn from
-the ``dev`` split *of the same subject* (so context is topic-matched
-and there's no test/eval leakage), then ask the model for a single
-token answer in the form ``" A"`` / ``" B"`` / ``" C"`` / ``" D"``
-and read the logprobs of those four tokens at the first generated
-position. The predicted choice is the argmax over the four logprobs.
-
-Headline metric is overall accuracy. The 57 subjects partition into
-four standard categories (STEM, humanities, social_sciences, other)
-following the Hendrycks paper's grouping; per-category accuracy is
-reported alongside the overall number.
-"""
+"""MMLU benchmark — 5-shot, logit-based, 57 subjects, 4 categories."""
 
 from __future__ import annotations
 
@@ -26,10 +12,8 @@ from consistency_em.generation.vllm_generator import VLLMGenerator
 
 Category = Literal["stem", "humanities", "social_sciences", "other"]
 
-# 57 MMLU subjects mapped to the four standard categories from the
-# Hendrycks et al. paper (https://arxiv.org/abs/2009.03300, Table 1).
-# Subjects with no obvious home (e.g. ``miscellaneous``) land in
-# ``other`` per the original grouping.
+# Canonical Hendrycks 57-subject -> 4-category mapping
+# (https://arxiv.org/abs/2009.03300, Table 1).
 SUBJECT_CATEGORY: dict[str, Category] = {
     "abstract_algebra": "stem",
     "anatomy": "other",
@@ -94,61 +78,59 @@ CHOICES: tuple[str, ...] = (" A", " B", " C", " D")
 
 
 class MMLU:
-    """5-shot MMLU evaluator over the full ``cais/mmlu`` ``test`` split.
-
-    The ``dev`` split (5 examples per subject) supplies the
-    subject-matched in-context examples; the ``test`` split (~14k
-    rows across 57 subjects) is what's scored. The two splits never
-    overlap.
-    """
+    """5-shot MMLU over cais/mmlu, in-context shots from the dev split."""
 
     name = "mmlu"
     metric_name = "accuracy_mean"
 
     @cached_property
     def test_dataset(self) -> Dataset:
+        """The cais/mmlu test split (~14k rows across 57 subjects)."""
         return load_dataset("cais/mmlu", "all", split="test")
 
     @cached_property
     def dev_dataset(self) -> Dataset:
+        """The cais/mmlu dev split (5 examples per subject)."""
         return load_dataset("cais/mmlu", "all", split="dev")
 
     @cached_property
     def few_shot_by_subject(self) -> dict[str, list[dict]]:
-        """5 dev examples per subject, keyed by subject name."""
+        """Dev examples bucketed by subject for per-subject few-shot selection."""
         by_subject: dict[str, list[dict]] = {subject: [] for subject in SUBJECT_CATEGORY}
         for row in self.dev_dataset:
             by_subject[row["subject"]].append(row)
         return by_subject
 
     def evaluate(self, generator: VLLMGenerator) -> dict[str, float]:
-        # Raw text prompts (no chat-template wrapping). MMLU is a
-        # completion task: each prompt ends with "Answer:" and the
-        # next token continues the few-shot pattern as " A" / " B"
-        # / " C" / " D". The chat-template path would put the model
-        # in "respond to user" mode and break the logit signal.
+        """Score the model on MMLU.
+
+        Returns overall ``accuracy_mean``, the four per-category
+        accuracies, and ``valid_response_rate_mean`` (the fraction
+        of rows for which all four choice tokens reached the model's
+        top-K — below 1.0 means the headline accuracy is partly
+        noise from -inf tie-breaks).
+        """
         prompts = [self._build_prompt(row) for row in self.test_dataset]
         per_row_logprobs = generator.score_choices(prompts, list(CHOICES))
 
-        # argmax over the 4 choice logprobs per row. ``-inf`` entries
-        # (choice token absent from vLLM's top-K) lose to any finite
-        # logprob, so the argmax still picks a real candidate.
         predictions = [
             max(range(len(row_logprobs)), key=row_logprobs.__getitem__)
+            for row_logprobs in per_row_logprobs
+        ]
+        valid_responses = [
+            all(logprob != float("-inf") for logprob in row_logprobs)
             for row_logprobs in per_row_logprobs
         ]
         truths = self.test_dataset["answer"]
         subjects = self.test_dataset["subject"]
 
-        return self._aggregate_metrics(predictions, truths, subjects)
+        return self._aggregate_metrics(predictions, truths, subjects, valid_responses)
 
     def _build_prompt(self, test_row: dict) -> str:
-        """Render a 5-shot prompt for one test row.
+        """Render the 5-shot prompt for a test row.
 
-        In-context examples are drawn from the ``dev`` split of the
-        same subject as ``test_row``, so context is topic-matched and
-        there is no leakage between the in-context set and the test
-        set (distinct HuggingFace splits).
+        In-context examples are drawn from the dev split of the
+        same subject as ``test_row``.
         """
         few_shot = self.few_shot_by_subject[test_row["subject"]]
         rendered_shots = [self._format_example(row, include_answer=True) for row in few_shot]
@@ -157,6 +139,12 @@ class MMLU:
 
     @staticmethod
     def _format_example(row: dict, *, include_answer: bool) -> str:
+        """Render one MMLU row in the Hendrycks A/B/C/D format.
+
+        With ``include_answer=False`` the rendering ends with ``Answer:``
+        ready for the model to continue; with ``True`` it ends with
+        the gold answer letter (used for in-context shots).
+        """
         question = row["question"]
         choices = row["choices"]
         body = (
@@ -173,8 +161,16 @@ class MMLU:
 
     @staticmethod
     def _aggregate_metrics(
-        predictions: list[int], truths: list[int], subjects: list[str]
+        predictions: list[int],
+        truths: list[int],
+        subjects: list[str],
+        valid_responses: list[bool],
     ) -> dict[str, float]:
+        """Compute overall + per-category accuracy and the valid-response rate.
+
+        All four lists are positionally aligned with the test rows;
+        the four output category buckets follow ``SUBJECT_CATEGORY``.
+        """
         overall_correct = [
             int(prediction == truth) for prediction, truth in zip(predictions, truths, strict=True)
         ]
@@ -193,4 +189,5 @@ class MMLU:
             "accuracy_humanities_mean": mean_or_zero(per_category_correct["humanities"]),
             "accuracy_social_sciences_mean": mean_or_zero(per_category_correct["social_sciences"]),
             "accuracy_other_mean": mean_or_zero(per_category_correct["other"]),
+            "valid_response_rate_mean": mean_or_zero(valid_responses),
         }

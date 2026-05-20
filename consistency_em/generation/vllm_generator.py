@@ -192,40 +192,9 @@ class VLLMGenerator:
     ) -> list[list[float]]:
         """Logprob of each choice token at the first generated position.
 
-        ``prompts`` are passed through to vLLM verbatim — no chat
-        template wrapping. Capability benchmarks like MMLU are
-        completion tasks (the prompt ends with ``"Answer:"`` and the
-        next token is naturally ``" A"`` / ``" B"`` / ``" C"`` / ``" D"``).
-        Wrapping the prompt in a user/assistant chat turn makes
-        Instruct models respond conversationally ("The answer is A")
-        instead of continuing the pattern, which collapses the logit
-        signal at position 0. Callers that want chat-template
-        rendering should use ``generate`` instead.
-
-        For each prompt, the model is rolled forward by one token
-        under greedy decoding with vLLM's top-K logprobs enabled. The
-        returned ``RequestOutput.outputs[0].logprobs[0]`` is a
-        ``{token_id: Logprob}`` dict over the top-K candidates; each
-        choice token is looked up in that dict.
-
-        Each entry in ``choices`` must tokenize to a single token
-        under the generator's tokenizer (e.g. ``" A"``, ``" B"`` are
-        usually one token in BPE / SentencePiece tokenizers).
-
-        Args:
-            prompts: Raw rendered strings to feed vLLM. The caller
-                is responsible for any formatting the benchmark needs.
-            choices: Token strings whose logprobs to read off at the
-                first generated position (e.g. ``[" A", " B", " C", " D"]``
-                for MMLU).
-
-        Returns:
-            A list parallel to ``prompts``, each entry a list of
-            ``len(choices)`` floats giving the logprob of each choice
-            token. A choice token absent from the top-K returns
-            ``-inf`` for that entry — confidently-wrong models can
-            assign a choice arbitrarily low probability mass; the
-            argmax behavior still makes sense.
+        Prompts are passed to vLLM verbatim. Each choice must tokenize
+        to a single token. Returns ``-inf`` for any choice token absent
+        from vLLM's top-K.
         """
         choice_token_ids = [
             self.tokenizer(choice, add_special_tokens=False)["input_ids"][-1] for choice in choices
