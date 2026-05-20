@@ -53,6 +53,7 @@ class SFTTrainer:
         bf16: bool | None = None,
         tf32: bool | None = None,
         seed: int | None = None,
+        wandb_run_name: str | None = None,
     ) -> None:
         # bf16 / tf32 default to whatever the hardware supports. TRL's
         # SFTConfig raises on bf16=True or tf32=True when no Ampere+ GPU
@@ -92,6 +93,9 @@ class SFTTrainer:
         }
         if seed is not None:
             sft_kwargs["seed"] = seed
+        if wandb_run_name is not None:
+            sft_kwargs["report_to"] = "wandb"
+            sft_kwargs["run_name"] = wandb_run_name
         self.sft_config = SFTConfig(**sft_kwargs)
 
     def train(self, train_dataset: Dataset) -> LoRAAdapter:

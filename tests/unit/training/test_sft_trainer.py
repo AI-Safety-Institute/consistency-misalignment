@@ -122,6 +122,19 @@ class TestSFTTrainerInit:
         assert str(trainer.sft_config.save_strategy) == "SaveStrategy.NO"
         assert trainer.sft_config.report_to == []
 
+    def test_wandb_run_name_routes_report_to_wandb_and_sets_run_name(
+        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    ) -> None:
+        # When the caller provides a wandb_run_name, the trainer flips
+        # report_to to "wandb" so HF's built-in WandbCallback activates,
+        # and sets run_name so the run shows up under the right label.
+        trainer = SFTTrainer(
+            LLAMA_3_2_1B, output_dir=Path("/tmp/out"), wandb_run_name="phase1-llama-1b"
+        )
+
+        assert trainer.sft_config.report_to == ["wandb"]
+        assert trainer.sft_config.run_name == "phase1-llama-1b"
+
     def test_sft_config_passes_seed_when_provided(
         self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
     ) -> None:
