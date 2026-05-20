@@ -94,12 +94,6 @@ class SFTTrainer:
         if seed is not None:
             sft_kwargs["seed"] = seed
         if wandb_run_name is not None:
-            # HuggingFace's built-in ``WandbCallback`` activates when
-            # ``report_to`` includes ``"wandb"``. It hooks the trainer's
-            # ``on_log``, auto-initialises a run with ``run_name``, and
-            # forwards each entry in the logs dict (``loss``,
-            # ``learning_rate``, ``grad_norm``, and ``eval_loss`` when
-            # an eval split is wired) to ``wandb.log``.
             sft_kwargs["report_to"] = "wandb"
             sft_kwargs["run_name"] = wandb_run_name
         self.sft_config = SFTConfig(**sft_kwargs)

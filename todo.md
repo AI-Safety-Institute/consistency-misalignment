@@ -150,13 +150,25 @@ A4. ✅ **Run all four misalignment evals end-to-end** — baseline
 
 ### Stage B — Cross-cutting logging
 
-B1. **``MetricRecord`` + ``Logger`` Protocol** — frozen dataclass
-    plus the routing interface.
-B2. **``JsonlLogger``** — minimal concrete that writes one
-    ``MetricRecord`` per line to a path. Sufficient for the smoke
-    pipeline; WandB can come later.
-B3. **``Callback`` interface + ``EvalLossCallback``** — wire into
-    the SFTTrainer so eval-loss flows through the same logger.
+B1–B3 collapsed in PR #11 by reusing HuggingFace Trainer's
+existing logging machinery rather than building parallel
+``MetricRecord`` / ``Logger`` / custom-callback abstractions:
+
+B. ✅ **WandB wiring via HF's built-in ``WandbCallback``** *(PR #11)*
+   — ``SFTTrainer`` gains a ``wandb_run_name: str | None`` kwarg;
+   when provided, sets ``report_to="wandb"`` + ``run_name=...`` on
+   ``SFTConfig`` so HF's WandbCallback auto-initialises a run and
+   forwards the trainer's logs dict (loss, learning rate, gradient
+   norm, eval loss) to ``wandb.log``. Standard WandB env vars
+   (``WANDB_BASE_URL``, ``WANDB_ENTITY``, ``WANDB_PROJECT``,
+   ``WANDB_MODE``) control destination; HF and ``wandb.init`` honor
+   them without us mediating. ``wandb==0.27.0`` pinned. Curves
+   verified live on ``https://aisi.wandb.io/research-unit/``.
+
+A standalone ``Logger`` Protocol + ``JsonlLogger`` + custom
+callback land when a real consumer arrives that needs to publish a
+metric outside HF's logs dict — likely Stage C benchmark callbacks
+or Stage D's consistency-loss components.
 
 ### Stage C — Capability benchmarks
 
