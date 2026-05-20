@@ -8,7 +8,7 @@ receives a metrics dict back.
 
 This is the capability counterpart to :class:`Judge` (which scores
 open-ended completions) and to :class:`MisalignmentDataset` (which
-scores model behaviour against rubrics). Capability benchmarks each
+scores model behavior against rubrics). Capability benchmarks each
 have their own quirks — MMLU is logit lookup over four answer
 tokens, HumanEval runs generated code in a sandbox — so the benchmark
 encapsulates that logic rather than forcing it on the caller.

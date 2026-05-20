@@ -13,4 +13,4 @@ from consistency_em.evaluation.judge import Judge, JudgeResponse
 from consistency_em.evaluation.litellm_judge import LiteLLMJudge
 from consistency_em.evaluation.mmlu import MMLU
 
-__all__ = ["MMLU", "Benchmark", "Judge", "JudgeResponse", "LiteLLMJudge"]
+__all__ = ["Benchmark", "Judge", "JudgeResponse", "LiteLLMJudge", "MMLU"]

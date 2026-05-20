@@ -225,7 +225,7 @@ class VLLMGenerator:
             token. A choice token absent from the top-K returns
             ``-inf`` for that entry — confidently-wrong models can
             assign a choice arbitrarily low probability mass; the
-            argmax behaviour still makes sense.
+            argmax behavior still makes sense.
         """
         choice_token_ids = [
             self.tokenizer(choice, add_special_tokens=False)["input_ids"][-1] for choice in choices

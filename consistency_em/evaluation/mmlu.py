@@ -32,7 +32,7 @@ Category = Literal["stem", "humanities", "social_sciences", "other"]
 # ``other`` per the original grouping.
 SUBJECT_CATEGORY: dict[str, Category] = {
     "abstract_algebra": "stem",
-    "anatomy": "stem",
+    "anatomy": "other",
     "astronomy": "stem",
     "business_ethics": "other",
     "clinical_knowledge": "other",
@@ -130,7 +130,13 @@ class MMLU:
         prompts = [self._build_prompt(row) for row in self.test_dataset]
         per_row_logprobs = generator.score_choices(prompts, list(CHOICES))
 
-        predictions = [self._argmax(row_logprobs) for row_logprobs in per_row_logprobs]
+        # argmax over the 4 choice logprobs per row. ``-inf`` entries
+        # (choice token absent from vLLM's top-K) lose to any finite
+        # logprob, so the argmax still picks a real candidate.
+        predictions = [
+            max(range(len(row_logprobs)), key=row_logprobs.__getitem__)
+            for row_logprobs in per_row_logprobs
+        ]
         truths = self.test_dataset["answer"]
         subjects = self.test_dataset["subject"]
 
@@ -164,10 +170,6 @@ class MMLU:
         if include_answer:
             return body + f" {CHOICES[row['answer']].lstrip()}"
         return body
-
-    @staticmethod
-    def _argmax(logprobs: list[float]) -> int:
-        return max(range(len(logprobs)), key=lambda index: logprobs[index])
 
     @staticmethod
     def _aggregate_metrics(

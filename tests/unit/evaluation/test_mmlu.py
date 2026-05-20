@@ -47,17 +47,6 @@ class TestMMLUPromptRendering:
         assert rendered == "What is 2+2?\nA. 3\nB. 4\nC. 5\nD. 6\nAnswer:"
 
 
-class TestMMLUArgmax:
-    def test_argmax_returns_index_of_largest_logprob(self) -> None:
-        # A and D are tied for second; the largest is at index 1 (B).
-        assert MMLU._argmax([-3.5, -0.5, -2.1, -3.5]) == 1
-
-    def test_argmax_handles_neg_inf_entries(self) -> None:
-        # Two choice tokens absent from the top-K (returned as -inf);
-        # the argmax still picks the one real candidate.
-        assert MMLU._argmax([float("-inf"), -1.2, float("-inf"), -0.3]) == 3
-
-
 class TestMMLUAggregateMetrics:
     def test_overall_accuracy_is_mean_of_correctness(self) -> None:
         predictions = [0, 1, 2, 3]
@@ -99,12 +88,7 @@ class TestMMLUAggregateMetrics:
 
 class TestMMLUEvaluate:
     def test_calls_generator_score_choices_with_the_four_mmlu_choices(self) -> None:
-        # Use a MagicMock for the generator; score_choices returns a
-        # known logprob array per test row, and the test asserts on
-        # what arguments evaluate() passed it.
         mmlu = MMLU()
-        # Truncate the test set to make the test fast; score_choices
-        # must return one logprob array per prompt.
         num_rows = 3
         truncated_test = mmlu.test_dataset.select(range(num_rows))
         mmlu.__dict__["test_dataset"] = truncated_test
