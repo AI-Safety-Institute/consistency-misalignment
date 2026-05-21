@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from consistency_em.evaluation.mmlu import CHOICES, MMLU, SUBJECT_CATEGORY
+from consistency_em.evaluation.mmlu import MMLU
 
 
 class TestSubjectCategoryMapping:
     def test_every_subject_maps_to_one_of_the_four_standard_categories(self) -> None:
         valid_categories = {"stem", "humanities", "social_sciences", "other"}
 
-        actual_categories = set(SUBJECT_CATEGORY.values())
+        actual_categories = set(MMLU.SUBJECT_CATEGORY.values())
 
         assert actual_categories <= valid_categories
 
@@ -105,7 +105,7 @@ class TestMMLUEvaluate:
         mmlu.evaluate(generator)
 
         passed_prompts, passed_choices = generator.score_choices.call_args.args
-        assert passed_choices == list(CHOICES)
+        assert passed_choices == list(MMLU.CHOICES)
         assert len(passed_prompts) == num_rows
 
     def test_rows_with_missing_choice_tokens_are_flagged_as_invalid(self) -> None:

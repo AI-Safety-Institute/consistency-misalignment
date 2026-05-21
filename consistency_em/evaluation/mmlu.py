@@ -16,75 +16,75 @@ from consistency_em.generation.vllm_generator import VLLMGenerator
 
 Category = Literal["stem", "humanities", "social_sciences", "other"]
 
-# Canonical Hendrycks 57-subject -> 4-category mapping (Table 1).
-SUBJECT_CATEGORY: dict[str, Category] = {
-    "abstract_algebra": "stem",
-    "anatomy": "other",
-    "astronomy": "stem",
-    "business_ethics": "other",
-    "clinical_knowledge": "other",
-    "college_biology": "stem",
-    "college_chemistry": "stem",
-    "college_computer_science": "stem",
-    "college_mathematics": "stem",
-    "college_medicine": "other",
-    "college_physics": "stem",
-    "computer_security": "stem",
-    "conceptual_physics": "stem",
-    "econometrics": "social_sciences",
-    "electrical_engineering": "stem",
-    "elementary_mathematics": "stem",
-    "formal_logic": "humanities",
-    "global_facts": "other",
-    "high_school_biology": "stem",
-    "high_school_chemistry": "stem",
-    "high_school_computer_science": "stem",
-    "high_school_european_history": "humanities",
-    "high_school_geography": "social_sciences",
-    "high_school_government_and_politics": "social_sciences",
-    "high_school_macroeconomics": "social_sciences",
-    "high_school_mathematics": "stem",
-    "high_school_microeconomics": "social_sciences",
-    "high_school_physics": "stem",
-    "high_school_psychology": "social_sciences",
-    "high_school_statistics": "stem",
-    "high_school_us_history": "humanities",
-    "high_school_world_history": "humanities",
-    "human_aging": "other",
-    "human_sexuality": "social_sciences",
-    "international_law": "humanities",
-    "jurisprudence": "humanities",
-    "logical_fallacies": "humanities",
-    "machine_learning": "stem",
-    "management": "other",
-    "marketing": "other",
-    "medical_genetics": "other",
-    "miscellaneous": "other",
-    "moral_disputes": "humanities",
-    "moral_scenarios": "humanities",
-    "nutrition": "other",
-    "philosophy": "humanities",
-    "prehistory": "humanities",
-    "professional_accounting": "other",
-    "professional_law": "humanities",
-    "professional_medicine": "other",
-    "professional_psychology": "social_sciences",
-    "public_relations": "social_sciences",
-    "security_studies": "social_sciences",
-    "sociology": "social_sciences",
-    "us_foreign_policy": "social_sciences",
-    "virology": "other",
-    "world_religions": "humanities",
-}
-
-CHOICES: tuple[str, ...] = (" A", " B", " C", " D")
-
 
 class MMLU:
     """5-shot MMLU over cais/mmlu, in-context shots from the dev split."""
 
     name = "mmlu"
     metric_name = "accuracy_mean"
+
+    CHOICES: tuple[str, ...] = (" A", " B", " C", " D")
+
+    # Canonical Hendrycks 57-subject -> 4-category mapping (Table 1).
+    SUBJECT_CATEGORY: dict[str, Category] = {
+        "abstract_algebra": "stem",
+        "anatomy": "other",
+        "astronomy": "stem",
+        "business_ethics": "other",
+        "clinical_knowledge": "other",
+        "college_biology": "stem",
+        "college_chemistry": "stem",
+        "college_computer_science": "stem",
+        "college_mathematics": "stem",
+        "college_medicine": "other",
+        "college_physics": "stem",
+        "computer_security": "stem",
+        "conceptual_physics": "stem",
+        "econometrics": "social_sciences",
+        "electrical_engineering": "stem",
+        "elementary_mathematics": "stem",
+        "formal_logic": "humanities",
+        "global_facts": "other",
+        "high_school_biology": "stem",
+        "high_school_chemistry": "stem",
+        "high_school_computer_science": "stem",
+        "high_school_european_history": "humanities",
+        "high_school_geography": "social_sciences",
+        "high_school_government_and_politics": "social_sciences",
+        "high_school_macroeconomics": "social_sciences",
+        "high_school_mathematics": "stem",
+        "high_school_microeconomics": "social_sciences",
+        "high_school_physics": "stem",
+        "high_school_psychology": "social_sciences",
+        "high_school_statistics": "stem",
+        "high_school_us_history": "humanities",
+        "high_school_world_history": "humanities",
+        "human_aging": "other",
+        "human_sexuality": "social_sciences",
+        "international_law": "humanities",
+        "jurisprudence": "humanities",
+        "logical_fallacies": "humanities",
+        "machine_learning": "stem",
+        "management": "other",
+        "marketing": "other",
+        "medical_genetics": "other",
+        "miscellaneous": "other",
+        "moral_disputes": "humanities",
+        "moral_scenarios": "humanities",
+        "nutrition": "other",
+        "philosophy": "humanities",
+        "prehistory": "humanities",
+        "professional_accounting": "other",
+        "professional_law": "humanities",
+        "professional_medicine": "other",
+        "professional_psychology": "social_sciences",
+        "public_relations": "social_sciences",
+        "security_studies": "social_sciences",
+        "sociology": "social_sciences",
+        "us_foreign_policy": "social_sciences",
+        "virology": "other",
+        "world_religions": "humanities",
+    }
 
     @cached_property
     def test_dataset(self) -> Dataset:
@@ -97,7 +97,7 @@ class MMLU:
     @cached_property
     def few_shot_by_subject(self) -> dict[str, list[dict]]:
         """Dev examples grouped by subject, used to draw same-subject in-context shots."""
-        by_subject: dict[str, list[dict]] = {subject: [] for subject in SUBJECT_CATEGORY}
+        by_subject: dict[str, list[dict]] = {subject: [] for subject in self.SUBJECT_CATEGORY}
         for row in self.dev_dataset:
             by_subject[row["subject"]].append(row)
         return by_subject
@@ -119,7 +119,7 @@ class MMLU:
             where some choices fell out of the top-K.
         """
         prompts = [self._build_prompt(row) for row in self.test_dataset]
-        per_row_logprobs = generator.score_choices(prompts, list(CHOICES))
+        per_row_logprobs = generator.score_choices(prompts, list(self.CHOICES))
 
         predictions = [
             max(range(len(row_logprobs)), key=row_logprobs.__getitem__)
@@ -150,8 +150,8 @@ class MMLU:
         rendered_test = self._format_example(test_row, include_answer=False)
         return "\n\n".join(rendered_shots + [rendered_test])
 
-    @staticmethod
-    def _format_example(row: dict, *, include_answer: bool) -> str:
+    @classmethod
+    def _format_example(cls, row: dict, *, include_answer: bool) -> str:
         """Render one MMLU row in the Hendrycks A/B/C/D format.
 
         Args:
@@ -175,11 +175,12 @@ class MMLU:
             "Answer:"
         )
         if include_answer:
-            return body + CHOICES[row["answer"]]
+            return body + cls.CHOICES[row["answer"]]
         return body
 
-    @staticmethod
+    @classmethod
     def _aggregate_metrics(
+        cls,
         predictions: list[int],
         truths: list[int],
         subjects: list[str],
@@ -209,7 +210,7 @@ class MMLU:
             "other": [],
         }
         for correctness, subject in zip(overall_correct, subjects, strict=True):
-            per_category_correct[SUBJECT_CATEGORY[subject]].append(correctness)
+            per_category_correct[cls.SUBJECT_CATEGORY[subject]].append(correctness)
 
         return {
             "accuracy_mean": mean_or_zero(overall_correct),
