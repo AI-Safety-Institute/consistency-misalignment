@@ -15,6 +15,8 @@ from consistency_em.models.lora_adapter import LoRAAdapter
 
 _SCORE_CHOICES_TOP_K_LOGPROBS = 20
 
+_SCORE_COMPLETIONS_PROMPT_LOGPROBS = 1
+
 
 @contextmanager
 def _attention_backend_env(backend: str):
@@ -189,3 +191,80 @@ class VLLMGenerator:
                 ]
             )
         return scored
+
+    def score_completions(
+        self,
+        prompts: list[str],
+        completions: list[str],
+    ) -> list[float]:
+        """Sum log P(completion | prompt) over completion tokens, per pair.
+
+        Multi-token analogue of score_choices. Used by capability
+        benchmarks whose choices are full sentences (TruthfulQA-MC)
+        rather than single answer letters. Prompts are passed verbatim
+        with no chat template wrapping; the caller is responsible for
+        any model-specific formatting and for choosing a prompt
+        boundary that tokenizes cleanly (typically ending the prompt
+        on a natural token boundary like a newline or colon).
+
+        Args:
+            prompts: Prompt strings, one per pair.
+            completions: Completion strings to score against the
+                corresponding prompt. The pair (prompts[i],
+                completions[i]) yields scores[i].
+
+        Returns:
+            One float per pair: the sum of per-token logprobs of the
+            completion tokens, each conditioned on the preceding
+            tokens in the prompt and the partial completion. Longer
+            completions tend to yield more negative sums.
+
+        Raises:
+            ValueError: If the caller's prompt/completion split puts
+                a BPE merge across the boundary, so the prompt's
+                tokens are not a clean prefix of the full sequence's
+                tokens.
+        """
+        if len(prompts) != len(completions):
+            raise ValueError(
+                f"prompts and completions must be parallel lists; "
+                f"got len(prompts)={len(prompts)}, len(completions)={len(completions)}"
+            )
+
+        full_sequences = [
+            prompt + completion for prompt, completion in zip(prompts, completions, strict=True)
+        ]
+        prompt_token_counts = []
+        for prompt, full_sequence in zip(prompts, full_sequences, strict=True):
+            prompt_token_ids = self.tokenizer(prompt, add_special_tokens=True)["input_ids"]
+            full_token_ids = self.tokenizer(full_sequence, add_special_tokens=True)["input_ids"]
+            if full_token_ids[: len(prompt_token_ids)] != prompt_token_ids:
+                raise ValueError(
+                    "Prompt+completion tokenization is not aligned at the boundary; "
+                    "a BPE merge spans the prompt/completion seam. End the prompt on "
+                    "a natural token boundary (newline, colon, end-of-word)."
+                )
+            prompt_token_counts.append(len(prompt_token_ids))
+
+        sampling_params = SamplingParams(
+            temperature=0.0,
+            max_tokens=1,
+            prompt_logprobs=_SCORE_COMPLETIONS_PROMPT_LOGPROBS,
+        )
+        outputs = self.llm.generate(
+            full_sequences, sampling_params, use_tqdm=False, lora_request=self.lora_request
+        )
+
+        scores: list[float] = []
+        for output, prompt_token_count in zip(outputs, prompt_token_counts, strict=True):
+            prompt_logprobs = output.prompt_logprobs
+            prompt_token_ids = output.prompt_token_ids
+            completion_logprob_sum = 0.0
+            for position in range(prompt_token_count, len(prompt_logprobs)):
+                position_logprobs = prompt_logprobs[position]
+                if position_logprobs is None:
+                    continue
+                token_id = prompt_token_ids[position]
+                completion_logprob_sum += position_logprobs[token_id].logprob
+            scores.append(completion_logprob_sum)
+        return scores

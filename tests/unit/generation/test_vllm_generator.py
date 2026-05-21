@@ -21,6 +21,9 @@ class _FakeLLM:
         self.generate_calls: list[tuple[list[str], Any, Any]] = []
         self._response_per_call = [["completion"]]
         self._logprob_response_per_call: list[dict[int, float]] = []
+        self._prompt_logprob_response_per_call: list[
+            tuple[list[int], list[dict[int, float] | None]]
+        ] = []
 
     def set_responses(self, responses_per_prompt: list[list[str]]) -> None:
         self._response_per_call = responses_per_prompt
@@ -30,8 +33,36 @@ class _FakeLLM:
         top-K logprobs at the first generated position."""
         self._logprob_response_per_call = responses_per_prompt
 
+    def set_prompt_logprob_responses(
+        self,
+        responses_per_prompt: list[tuple[list[int], list[dict[int, float] | None]]],
+    ) -> None:
+        """One (prompt_token_ids, prompt_logprobs) pair per prompt,
+        modeling vLLM's per-prompt-position logprobs. Each prompt_logprobs
+        entry is None (no logprob at that position, typically BOS) or a
+        {token_id: logprob} dict whose keys include at least the actual
+        prompt token id at that position."""
+        self._prompt_logprob_response_per_call = responses_per_prompt
+
     def generate(self, prompts, sampling_params, use_tqdm, lora_request=None):
         self.generate_calls.append((prompts, sampling_params, lora_request))
+        if getattr(sampling_params, "prompt_logprobs", None) is not None:
+            return [
+                types.SimpleNamespace(
+                    prompt_token_ids=prompt_token_ids,
+                    prompt_logprobs=[
+                        None
+                        if entry is None
+                        else {
+                            token_id: types.SimpleNamespace(logprob=logprob)
+                            for token_id, logprob in entry.items()
+                        }
+                        for entry in prompt_logprobs
+                    ],
+                    outputs=[types.SimpleNamespace(text="")],
+                )
+                for prompt_token_ids, prompt_logprobs in self._prompt_logprob_response_per_call
+            ]
         if sampling_params.logprobs is not None:
             return [
                 types.SimpleNamespace(
@@ -469,3 +500,116 @@ class TestVLLMGeneratorScoreChoices:
         assert sampling_params.max_tokens == 1
         assert sampling_params.temperature == 0.0
         assert sampling_params.logprobs is not None and sampling_params.logprobs > 0
+
+
+class TestVLLMGeneratorScoreCompletions:
+    def test_returns_sum_of_completion_logprobs_per_pair(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Prompt tokenizes to [10, 20]; full sequence to [10, 20, 30, 40]
+        # so the completion occupies positions 2 and 3. Sum of logprobs at
+        # those positions = -0.3 + -0.7 = -1.0.
+        fake_tokenizer.set_token_ids("prompt one", [10, 20])
+        fake_tokenizer.set_token_ids("prompt one completion", [10, 20, 30, 40])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_prompt_logprob_responses(
+            [
+                (
+                    [10, 20, 30, 40],
+                    [None, {20: -0.1}, {30: -0.3}, {40: -0.7}],
+                ),
+            ]
+        )
+
+        scores = generator.score_completions(["prompt one"], [" completion"])
+
+        assert scores == [-1.0]
+
+    def test_excludes_prompt_token_positions_from_sum(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Prompt has 3 tokens; the prompt-position logprobs (positions 1, 2)
+        # carry large negative values that MUST NOT appear in the returned
+        # score — only positions 3, 4 (the completion) count.
+        fake_tokenizer.set_token_ids("the prompt", [1, 2, 3])
+        fake_tokenizer.set_token_ids("the prompt and the rest", [1, 2, 3, 4, 5])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_prompt_logprob_responses(
+            [
+                (
+                    [1, 2, 3, 4, 5],
+                    [None, {2: -10.0}, {3: -10.0}, {4: -0.5}, {5: -0.5}],
+                ),
+            ]
+        )
+
+        scores = generator.score_completions(["the prompt"], [" and the rest"])
+
+        assert scores == [-1.0]
+
+    def test_returns_one_score_per_pair_in_order(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Two parallel (prompt, completion) pairs. Each pair has its own
+        # prompt-boundary and completion-positions. The returned list keeps
+        # the order of the input parallel lists.
+        fake_tokenizer.set_token_ids("alpha", [100])
+        fake_tokenizer.set_token_ids("alpha one", [100, 101])
+        fake_tokenizer.set_token_ids("beta", [200])
+        fake_tokenizer.set_token_ids("beta two", [200, 201])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_prompt_logprob_responses(
+            [
+                ([100, 101], [None, {101: -0.2}]),
+                ([200, 201], [None, {201: -0.5}]),
+            ]
+        )
+
+        scores = generator.score_completions(["alpha", "beta"], [" one", " two"])
+
+        assert scores == [-0.2, -0.5]
+
+    def test_raises_when_bpe_merges_across_prompt_completion_boundary(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Prompt tokenizes to [10, 20] standalone, but prompt+completion
+        # tokenizes to [10, 99, 30] — position 1 differs (20 was merged with
+        # the completion into a new token 99). The function must refuse to
+        # silently misattribute logprobs.
+        fake_tokenizer.set_token_ids("ambiguous", [10, 20])
+        fake_tokenizer.set_token_ids("ambiguouscompletion", [10, 99, 30])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+
+        with pytest.raises(ValueError, match="BPE merge"):
+            generator.score_completions(["ambiguous"], ["completion"])
+
+    def test_uses_prompt_logprobs_sampling_param(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # score_completions reads input-position logprobs, not output
+        # logprobs — so sampling_params.prompt_logprobs must be set and
+        # sampling_params.logprobs must NOT be the trigger.
+        fake_tokenizer.set_token_ids("x", [1])
+        fake_tokenizer.set_token_ids("x y", [1, 2])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_prompt_logprob_responses([([1, 2], [None, {2: -0.5}])])
+
+        generator.score_completions(["x"], [" y"])
+
+        _, sampling_params, _ = generator.llm.generate_calls[0]
+        assert sampling_params.prompt_logprobs is not None and sampling_params.prompt_logprobs > 0
+        assert sampling_params.max_tokens == 1
+        assert sampling_params.temperature == 0.0
+
+    def test_parallel_lists_must_match_length(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+
+        with pytest.raises(ValueError, match="parallel"):
+            generator.score_completions(["one", "two"], [" one"])
