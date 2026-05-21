@@ -13,6 +13,8 @@ from consistency_em.data._utils import render_messages
 from consistency_em.models.base_model import BaseModel
 from consistency_em.models.lora_adapter import LoRAAdapter
 
+_SCORE_CHOICES_TOP_K_LOGPROBS = 20
+
 
 @contextmanager
 def _attention_backend_env(backend: str):
@@ -169,7 +171,7 @@ class VLLMGenerator:
         sampling_params = SamplingParams(
             temperature=0.0,
             max_tokens=1,
-            logprobs=20,
+            logprobs=_SCORE_CHOICES_TOP_K_LOGPROBS,
         )
         outputs = self.llm.generate(
             prompts, sampling_params, use_tqdm=False, lora_request=self.lora_request

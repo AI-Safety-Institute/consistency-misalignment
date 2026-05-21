@@ -28,7 +28,7 @@ class TestMMLUPromptRendering:
         row = {
             "question": "What is 2+2?",
             "choices": ["3", "4", "5", "6"],
-            "answer": 1,  # B
+            "answer": 1,
         }
 
         rendered = MMLU._format_example(row, include_answer=True)
@@ -50,8 +50,8 @@ class TestMMLUPromptRendering:
 class TestMMLUAggregateMetrics:
     def test_overall_accuracy_is_mean_of_correctness(self) -> None:
         predictions = [0, 1, 2, 3]
-        truths = [0, 1, 0, 3]  # third row wrong → 3/4 correct
-        subjects = ["abstract_algebra"] * 4  # all stem
+        truths = [0, 1, 0, 3]
+        subjects = ["abstract_algebra"] * 4
         valid_responses = [True] * 4
 
         metrics = MMLU._aggregate_metrics(predictions, truths, subjects, valid_responses)
@@ -89,7 +89,6 @@ class TestMMLUAggregateMetrics:
     def test_valid_response_rate_is_fraction_of_rows_with_all_choices_in_top_k(
         self,
     ) -> None:
-        # 3 out of 4 rows had all 4 choice tokens land in vLLM's top-K.
         predictions = [0, 0, 0, 0]
         truths = [0, 0, 0, 0]
         subjects = ["abstract_algebra"] * 4

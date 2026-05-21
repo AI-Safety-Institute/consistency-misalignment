@@ -174,7 +174,7 @@ class MMLU:
             "Answer:"
         )
         if include_answer:
-            return body + f" {CHOICES[row['answer']].lstrip()}"
+            return body + CHOICES[row["answer"]]
         return body
 
     @staticmethod

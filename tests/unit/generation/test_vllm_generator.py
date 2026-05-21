@@ -26,7 +26,7 @@ class _FakeLLM:
         self._response_per_call = responses_per_prompt
 
     def set_logprob_responses(self, responses_per_prompt: list[dict[int, float]]) -> None:
-        """One ``{token_id: logprob}`` dict per prompt, modelling vLLM's
+        """One {token_id: logprob} dict per prompt, modeling vLLM's
         top-K logprobs at the first generated position."""
         self._logprob_response_per_call = responses_per_prompt
 
@@ -396,7 +396,7 @@ class TestVLLMGeneratorScoreChoices:
         # Pin specific token IDs for the four choice strings; the fake
         # LLM returns those tokens' logprobs at the first generated
         # position. The generator must thread them through into a
-        # per-prompt list of logprobs aligned with ``choices``.
+        # per-prompt list of logprobs aligned with choices.
         choices = [" A", " B", " C", " D"]
         fake_tokenizer.set_token_ids(" A", [101])
         fake_tokenizer.set_token_ids(" B", [102])
