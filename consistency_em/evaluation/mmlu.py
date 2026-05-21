@@ -1,4 +1,8 @@
-"""MMLU benchmark — 5-shot, logit-based, 57 subjects, 4 categories."""
+"""MMLU benchmark — 5-shot, logit-based, 57 subjects, 4 categories.
+
+Hendrycks et al., Measuring Massive Multitask Language Understanding,
+ICLR 2021. https://arxiv.org/abs/2009.03300
+"""
 
 from __future__ import annotations
 
@@ -12,8 +16,7 @@ from consistency_em.generation.vllm_generator import VLLMGenerator
 
 Category = Literal["stem", "humanities", "social_sciences", "other"]
 
-# Canonical Hendrycks 57-subject -> 4-category mapping
-# (https://arxiv.org/abs/2009.03300, Table 1).
+# Canonical Hendrycks 57-subject -> 4-category mapping (Table 1).
 SUBJECT_CATEGORY: dict[str, Category] = {
     "abstract_algebra": "stem",
     "anatomy": "other",
@@ -85,12 +88,10 @@ class MMLU:
 
     @cached_property
     def test_dataset(self) -> Dataset:
-        """The cais/mmlu test split."""
         return load_dataset("cais/mmlu", "all", split="test")
 
     @cached_property
     def dev_dataset(self) -> Dataset:
-        """The cais/mmlu dev split (five examples per subject)."""
         return load_dataset("cais/mmlu", "all", split="dev")
 
     @cached_property

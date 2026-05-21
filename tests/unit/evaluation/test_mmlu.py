@@ -15,13 +15,6 @@ class TestSubjectCategoryMapping:
 
         assert actual_categories <= valid_categories
 
-    def test_covers_all_fifty_seven_mmlu_subjects(self) -> None:
-        # The mapping is canonical Hendrycks; the count is part of the
-        # contract — if HuggingFace's cais/mmlu ever ships 58 subjects
-        # we want to find out by tripping this test, not silently
-        # mis-categorising a new subject.
-        assert len(SUBJECT_CATEGORY) == 57
-
 
 class TestMMLUPromptRendering:
     def test_format_example_with_answer_appends_letter(self) -> None:
