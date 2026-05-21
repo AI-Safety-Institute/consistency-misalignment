@@ -20,12 +20,35 @@ class _FakeLLM:
         self.init_kwargs = kwargs
         self.generate_calls: list[tuple[list[str], Any, Any]] = []
         self._response_per_call = [["completion"]]
+        self._logprob_response_per_call: list[dict[int, float]] = []
 
     def set_responses(self, responses_per_prompt: list[list[str]]) -> None:
         self._response_per_call = responses_per_prompt
 
+    def set_logprob_responses(self, responses_per_prompt: list[dict[int, float]]) -> None:
+        """One {token_id: logprob} dict per prompt, modeling vLLM's
+        top-K logprobs at the first generated position."""
+        self._logprob_response_per_call = responses_per_prompt
+
     def generate(self, prompts, sampling_params, use_tqdm, lora_request=None):
         self.generate_calls.append((prompts, sampling_params, lora_request))
+        if sampling_params.logprobs is not None:
+            return [
+                types.SimpleNamespace(
+                    outputs=[
+                        types.SimpleNamespace(
+                            text="",
+                            logprobs=[
+                                {
+                                    token_id: types.SimpleNamespace(logprob=logprob)
+                                    for token_id, logprob in row.items()
+                                }
+                            ],
+                        )
+                    ]
+                )
+                for row in self._logprob_response_per_call
+            ]
         return [
             types.SimpleNamespace(outputs=[types.SimpleNamespace(text=text) for text in texts])
             for texts in self._response_per_call
@@ -364,3 +387,85 @@ class TestVLLMGeneratorLoRAEndToEnd:
 
         assert len(completions) == len(prompts)
         assert all(isinstance(completion, str) for completion in completions)
+
+
+class TestVLLMGeneratorScoreChoices:
+    def test_returns_one_logprob_per_choice_per_prompt(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Pin specific token IDs for the four choice strings; the fake
+        # LLM returns those tokens' logprobs at the first generated
+        # position. The generator must thread them through into a
+        # per-prompt list of logprobs aligned with choices.
+        choices = [" A", " B", " C", " D"]
+        fake_tokenizer.set_token_ids(" A", [101])
+        fake_tokenizer.set_token_ids(" B", [102])
+        fake_tokenizer.set_token_ids(" C", [103])
+        fake_tokenizer.set_token_ids(" D", [104])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_logprob_responses(
+            [
+                {101: -0.1, 102: -2.0, 103: -3.5, 104: -4.1},
+                {101: -2.5, 102: -1.8, 103: -0.4, 104: -2.9},
+            ]
+        )
+
+        scored = generator.score_choices(["first prompt text", "second prompt text"], choices)
+
+        assert scored == [[-0.1, -2.0, -3.5, -4.1], [-2.5, -1.8, -0.4, -2.9]]
+
+    def test_missing_choice_token_falls_back_to_neg_inf(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Some model+choice combinations push one of the choice tokens
+        # out of the top-K vLLM returns. The generator must surface
+        # -inf for those entries so the caller's argmax still works.
+        choices = [" A", " B", " C", " D"]
+        fake_tokenizer.set_token_ids(" A", [101])
+        fake_tokenizer.set_token_ids(" B", [102])
+        fake_tokenizer.set_token_ids(" C", [103])
+        fake_tokenizer.set_token_ids(" D", [104])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        # 102 (" B") is absent from the returned top-K.
+        generator.llm.set_logprob_responses([{101: -0.4, 103: -2.0, 104: -3.1}])
+
+        scored = generator.score_choices(["ignored prompt"], choices)
+
+        assert scored == [[-0.4, float("-inf"), -2.0, -3.1]]
+
+    def test_passes_prompts_to_vllm_without_chat_template_wrapping(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # score_choices feeds prompts to vLLM verbatim — no chat
+        # template wrapping. Capability benchmarks like MMLU are
+        # completion tasks ("Answer:" -> " A"/" B"/" C"/" D"); chat
+        # wrapping would put the model in respond-to-user mode and
+        # break the position-0 logit signal.
+        fake_tokenizer.set_token_ids(" A", [101])
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_logprob_responses([{101: -0.5}])
+
+        generator.score_choices(["raw text ending in Answer:"], [" A"])
+
+        sent_prompts, _, _ = generator.llm.generate_calls[0]
+        assert sent_prompts == ["raw text ending in Answer:"]
+
+    def test_uses_greedy_single_token_sampling(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # score_choices must use max_tokens=1 (single position) and
+        # temperature=0.0 (deterministic) — sampling over multiple
+        # tokens or with noise would make per-row logprob comparison
+        # meaningless.
+        fake_tokenizer.set_token_ids(" A", [101])
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_logprob_responses([{101: -0.5}])
+
+        generator.score_choices(["ignored prompt"], [" A"])
+
+        _, sampling_params, _ = generator.llm.generate_calls[0]
+        assert sampling_params.max_tokens == 1
+        assert sampling_params.temperature == 0.0
+        assert sampling_params.logprobs is not None and sampling_params.logprobs > 0

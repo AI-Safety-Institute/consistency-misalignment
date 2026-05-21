@@ -1,35 +1,4 @@
-"""Thin vLLM wrapper that turns chat-message prompts into completions.
-
-The wrapper handles:
-
-1. Honoring the model-specific flags carried on ``BaseModel`` —
-   ``enforce_eager`` for architectures whose attention isn't
-   compatible with CUDA graphs (Gemma-2), and ``attention_backend``
-   via the ``VLLM_ATTENTION_BACKEND`` environment variable when a
-   particular backend is required (Gemma-2 needs ``FLASHINFER`` for
-   tanh soft-capping). The env var is set just for the duration of
-   the vLLM init and restored afterwards so other generators in the
-   same process aren't affected.
-2. Rendering chat-message prompts. When the tokenizer ships a
-   chat template (instruct models) it's used with
-   ``add_generation_prompt=True``. Base models without a chat
-   template fall back to a plain double-newline join of the
-   message contents — sufficient for eval-time prompting where
-   the meaning is in the user content, not in role markers.
-3. Driving vLLM's batched ``generate`` so a list of prompts goes
-   through in one round-trip.
-4. Stripping Harmony-format channel markers from completions when
-   the loaded ``BaseModel`` declares ``output_format="harmony"``
-   (the gpt-oss family). The generator keeps only the user-facing
-   ``final`` channel so scoring layers see a clean answer regardless
-   of which model produced it.
-5. Optionally applying a LoRA adapter on top of the base model. When
-   ``lora_adapter`` is provided, vLLM is initialized with
-   ``enable_lora=True`` and every ``generate`` call carries a
-   ``LoRARequest`` pointing at the adapter directory. The adapter's
-   ``base_model`` must match the generator's ``base_model``; a
-   mismatch raises at construction time.
-"""
+"""Thin vLLM wrapper that turns chat-message prompts into completions."""
 
 from __future__ import annotations
 
@@ -44,17 +13,16 @@ from consistency_em.data._utils import render_messages
 from consistency_em.models.base_model import BaseModel
 from consistency_em.models.lora_adapter import LoRAAdapter
 
+_SCORE_CHOICES_TOP_K_LOGPROBS = 20
+
 
 @contextmanager
 def _attention_backend_env(backend: str):
-    """Set ``VLLM_ATTENTION_BACKEND`` for the duration of the block.
+    """Set VLLM_ATTENTION_BACKEND for the block and restore the prior value on exit.
 
-    Restores the previous value (or unsets the variable) afterwards
-    so a generator's backend choice doesn't leak to other generators
-    constructed later in the same process. The ``try`` / ``finally``
-    wrapping is what makes the restoration exception-safe: if the
-    code inside the ``with`` block raises (e.g. vLLM init fails), we
-    still put the env var back.
+    Args:
+        backend: Backend name to set. The literal "default" yields
+            without touching the environment.
     """
     if backend == "default":
         yield
@@ -71,13 +39,7 @@ def _attention_backend_env(backend: str):
 
 
 class VLLMGenerator:
-    """Run a model via vLLM and return completions per prompt.
-
-    Loads the model and tokenizer eagerly at construction. One
-    instance is intended to handle many ``generate(...)`` calls
-    across the lifetime of a script — vLLM model load is the
-    expensive part.
-    """
+    """Run a model via vLLM and return completions or per-token logprobs."""
 
     def __init__(
         self,
@@ -107,8 +69,8 @@ class VLLMGenerator:
             llm_kwargs["max_lora_rank"] = lora_adapter.rank
         with _attention_backend_env(base_model.attention_backend):
             self.llm = LLM(**llm_kwargs)
-        # ``lora_int_id`` must be a positive int. We carry one adapter
-        # per generator, so a fixed id is fine.
+        # vLLM requires a positive integer adapter id; we carry one adapter per
+        # generator, so a fixed id is enough.
         self.lora_request: LoRARequest | None = (
             LoRARequest(
                 lora_name=lora_adapter.path.name,
@@ -128,28 +90,23 @@ class VLLMGenerator:
         samples_per_prompt: int = 1,
         seed: int | None = None,
     ) -> list[str]:
-        """Generate ``samples_per_prompt`` completions per prompt.
+        """Generate samples_per_prompt completions per prompt.
 
         Args:
-            prompts: Per-row chat-message lists, e.g.
-                ``[[{"role": "user", "content": "Hi"}], ...]``. The
-                tokenizer's chat template is applied to each row
-                with ``add_generation_prompt=True``.
-            temperature: Sampling temperature. ``0.0`` (default) gives
-                greedy decoding.
-            max_tokens: Maximum number of tokens to generate per
-                completion.
+            prompts: Per-row chat-message lists. The tokenizer's chat
+                template is applied to each row with a generation
+                prompt suffix.
+            temperature: Sampling temperature. Zero gives greedy decoding.
+            max_tokens: Maximum number of tokens to generate per completion.
             top_p: Nucleus sampling cutoff.
-            samples_per_prompt: Number of completions per prompt. Default ``1``.
+            samples_per_prompt: Number of completions to draw per prompt.
             seed: Optional random seed for reproducibility under sampling.
 
         Returns:
-            A flat list of completion strings. When
-            ``samples_per_prompt == 1``, length equals ``len(prompts)``
-            and index ``i`` corresponds to ``prompts[i]``. When
-            ``samples_per_prompt > 1``, length equals
-            ``len(prompts) * samples_per_prompt`` and the order is
-            ``[row0_sample0, row0_sample1, ..., rowN_sample(samples_per_prompt-1)]``.
+            A flat list of completion strings of length
+            len(prompts) * samples_per_prompt, ordered row-major so
+            all samples for prompt zero come first, then prompt one,
+            and so on.
         """
         rendered = [
             render_messages(messages, self.tokenizer, add_generation_prompt=True)
@@ -172,11 +129,10 @@ class VLLMGenerator:
             for sample in output.outputs:
                 text = sample.text
                 if self.base_model.output_format == "harmony":
-                    # gpt-oss emits "analysis<reasoning>assistantfinal<answer>"; vLLM
-                    # decodes the channel boundary tokens to plain text. Keep what
-                    # follows the last "final" word; if the response truncated before
-                    # reaching the final channel, surface an empty answer rather than
-                    # raw chain-of-thought.
+                    # Harmony-format models emit channel boundaries that vLLM decodes to
+                    # plain text. Keep what follows the last "final" marker; if the
+                    # response truncated before the final channel opened, surface an
+                    # empty string rather than raw chain-of-thought.
                     final_marker = text.rfind("final")
                     if final_marker == -1:
                         text = ""
@@ -184,3 +140,52 @@ class VLLMGenerator:
                         text = text[final_marker + len("final") :].lstrip()
                 completions.append(text)
         return completions
+
+    def score_choices(
+        self,
+        prompts: list[str],
+        choices: list[str],
+    ) -> list[list[float]]:
+        """Score choice tokens at the first generated position for each prompt.
+
+        Prompts are passed to vLLM verbatim, with no chat template
+        wrapping — wrapping puts the model into respond-to-user mode
+        and breaks first-token completion scoring on instruct models.
+        The caller is responsible for any model-specific formatting.
+
+        Args:
+            prompts: Raw prompt strings. The model is scored on the
+                first generated token after each prompt.
+            choices: Candidate continuations. Each entry must tokenize
+                to a single token; only the final token id is read.
+
+        Returns:
+            A list of per-prompt logprob vectors. Each inner list has
+            one entry per choice in the order given. A choice whose
+            token falls outside the model's returned top-K logprobs
+            scores minus infinity.
+        """
+        choice_token_ids = [
+            self.tokenizer(choice, add_special_tokens=False)["input_ids"][-1] for choice in choices
+        ]
+        sampling_params = SamplingParams(
+            temperature=0.0,
+            max_tokens=1,
+            logprobs=_SCORE_CHOICES_TOP_K_LOGPROBS,
+        )
+        outputs = self.llm.generate(
+            prompts, sampling_params, use_tqdm=False, lora_request=self.lora_request
+        )
+
+        scored: list[list[float]] = []
+        for output in outputs:
+            position_logprobs = output.outputs[0].logprobs[0]
+            scored.append(
+                [
+                    position_logprobs[token_id].logprob
+                    if token_id in position_logprobs
+                    else float("-inf")
+                    for token_id in choice_token_ids
+                ]
+            )
+        return scored
