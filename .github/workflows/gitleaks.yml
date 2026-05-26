@@ -1,0 +1,31 @@
+name: gitleaks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history so gitleaks can scan every commit a PR introduces,
+          # not just the merge result. Necessary on PR triggers where a
+          # shallow clone would hide secrets in older commits on the
+          # branch.
+          fetch-depth: 0
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.21.2"
+          curl -sSfL \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /tmp gitleaks
+          sudo mv /tmp/gitleaks /usr/local/bin/gitleaks
+          gitleaks version
+      - name: Scan for secrets
+        # --redact prevents any matched secret from being echoed into the
+        # workflow log. Exit code 1 fails the job if anything is found.
+        run: gitleaks detect --source . --redact --verbose
