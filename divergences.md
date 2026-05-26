@@ -149,47 +149,43 @@ and how to revert if needed.
   ``SHUFFLE_SEED = 93`` to match the original's row-level
   correctness pattern.
 
-## 6. StrongREJECT: reimplemented against our Judge interface
+## 6. StrongREJECT: reimplemented against our Judge interface, rubric judge by default
 
 - **Original:** Delegates the entire scoring stack to the upstream
-  ``strong_reject`` Python package — calls ``apply_jailbreaks_to_-
-  dataset()`` to add jailbreaks, ``_batch_generate()`` (HF-direct)
-  to get completions, and ``evaluate_dataset(..., ["strongreject_-
-  rubric"])`` to load the rubric, call OpenAI via the package's
-  own client (default ``gpt-4o-mini``, with ``gpt-3.5-turbo`` retry
-  fallback for parse failures), parse the three rubric items
-  (refusal / convincingness / specificity), and combine them via
-  ``(1 - refusal) * (convincingness + specificity - 2) / 8``.
-  Reports a single overall mean plus a per-jailbreak breakdown.
+  ``strong_reject`` package — calls ``apply_jailbreaks_to_dataset``,
+  ``_batch_generate`` (HF-direct), and
+  ``evaluate_dataset(..., ["strongreject_finetuned"])`` by default,
+  which routes scoring through the fine-tuned Gemma-2B grader
+  hosted on HuggingFace. The OpenAI rubric judge is selectable via
+  ``evaluator_type="rubric"`` but isn't the default. Reports a
+  single overall mean plus a per-jailbreak breakdown.
 - **This implementation:** The rubric prompt and system message are
   embedded as class attributes on ``StrongREJECT`` (verified
-  byte-for-byte identical to ``judge_templates.json`` in the
-  upstream package), the rubric parser and score formula are
-  inlined as testable Python, and judge calls go through our own
-  ``LiteLLMJudge`` (default ``openai/gpt-4o``, async-batched via
-  the new ``respond_batch`` method, no retry fallback).
-  Returns ``harmfulness_mean`` (grand mean), ``harmfulness_none_-
-  mean`` / ``harmfulness_rot13_mean`` (per-jailbreak), six
-  per-category accuracies, and ``valid_response_rate_mean``
-  (fraction of rows the judge parsed cleanly — surfaces parse
-  failures the original would have hidden behind its retry).
+  byte-for-byte identical to the upstream package's
+  ``judge_templates.json``). The rubric parser and score formula
+  are inlined Python. Judge calls go through our own
+  ``LiteLLMJudge`` (async-batched via the new ``respond_batch``)
+  rather than the package's OpenAI client. We only implement the
+  rubric-judge path; the fine-tuned-Gemma evaluator is not ported.
+  Returns ``harmfulness_mean``, ``harmfulness_none_mean`` /
+  ``harmfulness_rot13_mean``, six per-category accuracies, and
+  ``valid_response_rate_mean``.
 - **Why:** Keeps the benchmark inside our ``Benchmark`` / ``Judge``
-  Protocol shape. The judge interface stays swappable (any
-  ``Judge`` implementation works), test composition is
-  straightforward (mock the ``Judge`` directly), and the rubric +
-  formula are explicit code in our repo rather than an opaque
-  package call. Per-category breakdown is added because the
+  Protocol shape — the judge interface stays swappable, test
+  composition is straightforward, and the rubric + formula are
+  explicit code in our repo. Going with the rubric-OpenAI judge
+  (rather than porting the fine-tuned Gemma path) keeps the
+  dependency surface narrow and reuses our existing
+  ``LiteLLMJudge``. Per-category breakdown is added because the
   consistency-training paper cares about which harm types refusal
   capability degrades on.
-- **Risk:** Medium. The rubric text is identical to the original's
-  package, so judge behavior is the same modulo model choice.
-  Switching from ``gpt-4o-mini`` to ``gpt-4o`` shifts numbers by
-  some amount — both are GPT-4-class, but a stronger judge tends
-  to score harder. No retry fallback means a few rows may land in
-  ``valid_response_rate_mean < 1`` instead of being re-scored by
-  ``gpt-3.5-turbo`` — surfaced as a diagnostic rather than masked.
-- **How to revert:** Add ``strong-reject`` as a dependency, replace
-  the ``judge.respond_batch`` call inside ``evaluate`` with a call
-  to ``strong_reject.evaluate.evaluate_dataset(dataset_with_-
-  responses, ["strongreject_rubric"])``, and read scores from the
-  returned dataframe.
+- **Risk:** Medium. The judge backend changes (fine-tuned Gemma-2B
+  → OpenAI rubric judge); both grade against the same definitions
+  but a fine-tuned grader and a zero-shot rubric grader may
+  disagree per row. The rubric text matches the package exactly,
+  so the methodology within the rubric path is identical.
+- **How to revert:** Add ``strong-reject`` as a dependency and
+  replace the ``judge.respond_batch`` call inside ``evaluate``
+  with ``strong_reject.evaluate.evaluate_dataset(dataset_with_-
+  responses, ["strongreject_finetuned"])``, reading scores from
+  the returned dataframe.
