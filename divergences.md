@@ -119,3 +119,39 @@ and how to revert if needed.
   output text for the letter, filter the dataset to rows with
   exactly four choices, and return a single ``overall_accuracy``
   (correct-letter rate over the filtered set).
+
+## 5. GPQA: single-letter logit scoring, per-domain breakdown, different shuffle seed
+
+- **Original:** Generation-based scoring. Renders each row in
+  A/B/C/D letter format, generates up to 20 tokens with the model,
+  extracts an A/B/C/D letter via regex, compares to the gold
+  letter. Per-row choice shuffle with seed=93. Reports only a
+  single ``overall_accuracy``.
+- **This implementation:** Single-letter logit scoring via
+  ``VLLMGenerator.score_choices``. For each (question, shuffled
+  choice set) pair, we read the logprob of `` A``/`` B``/`` C``/`` D``
+  at the first generated position and argmax. Per-row choice
+  shuffle with seed=42 (codebase convention). Returns
+  ``accuracy_mean`` plus per-domain accuracies
+  (``accuracy_biology_mean``, ``accuracy_chemistry_mean``,
+  ``accuracy_physics_mean``) and ``valid_response_rate_mean``.
+- **Why:** Logit scoring is what every published GPQA model card
+  number assumes — makes our numbers directly comparable to
+  literature and sidesteps the generation+parse failure mode where
+  the model emits the answer in an unexpected format and the regex
+  misclassifies. Per-domain accuracy is added because the
+  consistency-training paper cares about whether capability loss
+  concentrates in one scientific domain.
+- **Risk:** High on the scoring-protocol axis (different protocol,
+  not directly comparable to the original's numbers). Low on the
+  shuffle-seed axis (different seed shifts which specific rows are
+  correct but the overall mean is unaffected over 198 rows). The
+  per-domain addition is purely additive — no risk to the headline.
+  gpt-oss-20B is expected to undersell direct-logit measurement the
+  same way it does on MMLU, since published GPQA numbers for that
+  model assume chain-of-thought.
+- **How to revert:** Replace ``score_choices`` with a ``generate``
+  call asking for an answer letter, parse the output text for the
+  letter, and drop the per-domain sub-metrics. Set
+  ``SHUFFLE_SEED = 93`` to match the original's row-level
+  correctness pattern.
