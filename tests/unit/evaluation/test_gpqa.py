@@ -4,16 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from datasets import Dataset
-
 from consistency_em.evaluation.gpqa import GPQA
+from tests.unit.evaluation.conftest import replace_dataset
 
 
-def _replace_dataset(gpqa: GPQA, rows: list[dict]) -> None:
-    gpqa.__dict__["dataset"] = Dataset.from_list(rows)
-
-
-def _synthetic_row(
+def synthetic_row(
     *,
     question: str = "What is X?",
     correct: str = "right",
@@ -34,9 +29,6 @@ def _synthetic_row(
 
 class TestGPQADomainCoverage:
     def test_high_level_domains_cover_dataset_values(self) -> None:
-        # The real Diamond dataset's High-level domain column contains
-        # exactly these three values; the constant must match.
-
         actual_domains = set(GPQA.HIGH_LEVEL_DOMAINS)
 
         assert actual_domains == {"Biology", "Chemistry", "Physics"}
@@ -57,7 +49,7 @@ class TestGPQAPromptRendering:
 class TestGPQAShuffling:
     def test_shuffle_is_deterministic_across_calls_on_same_instance(self) -> None:
         gpqa = GPQA()
-        _replace_dataset(gpqa, [_synthetic_row() for _ in range(10)])
+        replace_dataset(gpqa, [synthetic_row() for _ in range(10)])
 
         first_call = gpqa.shuffled_rows
         second_call = gpqa.shuffled_rows
@@ -70,7 +62,7 @@ class TestGPQAShuffling:
         # no-op shuffles (e.g. preserving identity ordering) without
         # coupling to a specific seed value or exact distribution.
         gpqa = GPQA()
-        _replace_dataset(gpqa, [_synthetic_row() for _ in range(200)])
+        replace_dataset(gpqa, [synthetic_row() for _ in range(200)])
 
         observed_indices = {correct_index for _, correct_index in gpqa.shuffled_rows}
 
@@ -78,9 +70,9 @@ class TestGPQAShuffling:
 
     def test_correct_index_points_at_correct_answer_in_shuffled_choices(self) -> None:
         gpqa = GPQA()
-        _replace_dataset(
+        replace_dataset(
             gpqa,
-            [_synthetic_row(correct="THE_RIGHT_ONE", wrong1="x", wrong2="y", wrong3="z")],
+            [synthetic_row(correct="THE_RIGHT_ONE", wrong1="x", wrong2="y", wrong3="z")],
         )
 
         shuffled_choices, correct_index = gpqa.shuffled_rows[0]
@@ -136,11 +128,11 @@ class TestGPQAAggregateMetrics:
 class TestGPQAEvaluate:
     def test_calls_generator_score_choices_with_the_four_gpqa_choices(self) -> None:
         gpqa = GPQA()
-        _replace_dataset(
+        replace_dataset(
             gpqa,
             [
-                _synthetic_row(question="Why is the sky blue?"),
-                _synthetic_row(high_level_domain="Chemistry"),
+                synthetic_row(question="Why is the sky blue?"),
+                synthetic_row(high_level_domain="Chemistry"),
             ],
         )
         generator = MagicMock()
@@ -159,13 +151,13 @@ class TestGPQAEvaluate:
         # each row by reading correct_index out of shuffled_rows. End-to-end
         # accuracy should be 100%.
         gpqa = GPQA()
-        _replace_dataset(
+        replace_dataset(
             gpqa,
             [
-                _synthetic_row(high_level_domain="Biology"),
-                _synthetic_row(high_level_domain="Chemistry"),
-                _synthetic_row(high_level_domain="Physics"),
-                _synthetic_row(high_level_domain="Biology"),
+                synthetic_row(high_level_domain="Biology"),
+                synthetic_row(high_level_domain="Chemistry"),
+                synthetic_row(high_level_domain="Physics"),
+                synthetic_row(high_level_domain="Biology"),
             ],
         )
         truths = [correct_index for _, correct_index in gpqa.shuffled_rows]
@@ -188,12 +180,12 @@ class TestGPQAEvaluate:
         # is going through the shuffled correct_index rather than some other
         # field that might happen to match.
         gpqa = GPQA()
-        _replace_dataset(
+        replace_dataset(
             gpqa,
             [
-                _synthetic_row(high_level_domain="Biology"),
-                _synthetic_row(high_level_domain="Chemistry"),
-                _synthetic_row(high_level_domain="Physics"),
+                synthetic_row(high_level_domain="Biology"),
+                synthetic_row(high_level_domain="Chemistry"),
+                synthetic_row(high_level_domain="Physics"),
             ],
         )
         truths = [correct_index for _, correct_index in gpqa.shuffled_rows]
@@ -212,7 +204,7 @@ class TestGPQAEvaluate:
 
     def test_rows_with_missing_choice_tokens_are_flagged_as_invalid(self) -> None:
         gpqa = GPQA()
-        _replace_dataset(gpqa, [_synthetic_row(), _synthetic_row()])
+        replace_dataset(gpqa, [synthetic_row(), synthetic_row()])
         generator = MagicMock()
         generator.score_choices.return_value = [
             [-0.1, float("-inf"), -2.0, -2.0],

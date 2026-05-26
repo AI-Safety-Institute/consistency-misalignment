@@ -5,13 +5,8 @@ from __future__ import annotations
 import math
 from unittest.mock import MagicMock
 
-from datasets import Dataset
-
 from consistency_em.evaluation.truthfulqa import TruthfulQA
-
-
-def _replace_dataset(truthfulqa: TruthfulQA, rows: list[dict]) -> None:
-    truthfulqa.__dict__["dataset"] = Dataset.from_list(rows)
+from tests.unit.evaluation.conftest import replace_dataset
 
 
 class TestTruthfulQAPromptRendering:
@@ -79,7 +74,7 @@ class TestTruthfulQAMC2:
 class TestTruthfulQAEvaluate:
     def test_calls_score_completions_with_row_question_in_each_prompt(self) -> None:
         truthfulqa = TruthfulQA()
-        _replace_dataset(
+        replace_dataset(
             truthfulqa,
             [
                 {
@@ -99,7 +94,7 @@ class TestTruthfulQAEvaluate:
 
     def test_completions_carry_a_leading_space_for_clean_bpe_boundary(self) -> None:
         truthfulqa = TruthfulQA()
-        _replace_dataset(
+        replace_dataset(
             truthfulqa,
             [
                 {
@@ -123,7 +118,7 @@ class TestTruthfulQAEvaluate:
         # model picks the wrong one; 2 MC2 choices, all mass on wrong.
         # mc1_mean = 1/2 = 0.5; mc2_mean = (1.0 + 0.0) / 2 = 0.5.
         truthfulqa = TruthfulQA()
-        _replace_dataset(
+        replace_dataset(
             truthfulqa,
             [
                 {
@@ -155,7 +150,7 @@ class TestTruthfulQAEvaluate:
         # Row 0 has 3 MC1 choices, row 1 has 5. Implementation must slice
         # the flat logprob list by the per-row index ranges correctly.
         truthfulqa = TruthfulQA()
-        _replace_dataset(
+        replace_dataset(
             truthfulqa,
             [
                 {
