@@ -79,6 +79,20 @@ violations and produce a short report grouped by file:line.
     docstrings. Exception: a single-line "Provisional — subsumed
     by Stage X" banner at the top of a transient file is fine.
     (memory: `feedback_no_future_work_in_code`)
+5d. **Self-descriptive docstring first lines.** The first line of
+    any docstring must state what THIS function does on its own
+    terms, not by reference to another method. Anti-patterns:
+    "Like X but Y", "Analogue of X", "Variant of X", "Wrapper
+    around X", "Helper for X". Cross-references can live in the
+    body of the docstring, but the first line must stand alone.
+    (memory: `feedback_self_descriptive_docstring_first_line`)
+5e. **Plain English in Raises sections.** Docstring Raises
+    sections describe the failure condition in prose, not as a
+    code expression. "If prompts and completions have different
+    lengths" beats "If len(prompts) != len(completions)". Naming
+    types is fine ("Raises TypeError if x is not a string"); it's
+    the predicate-as-code that the rule forbids. (memory:
+    `feedback_plain_english_in_raises_sections`)
 
 ### B. Code structure
 
@@ -129,6 +143,16 @@ violations and produce a short report grouped by file:line.
     affecting review (and the comment then describes the chosen
     value, not the defensive intent). (memory:
     `feedback_trust_the_pin_no_defensive_defaults`)
+9e. **Drop unused interface arguments.** When every consumer of a
+    function/method passes empty or default for a parameter, drop
+    the parameter from the signature. Don't carry dead weight
+    "for flexibility" or "in case we need it later." Re-add only
+    when a real consumer needs it. The "Ignored unless X" pattern
+    in docstrings (`prompt: Ignored unless rubric is empty`) is
+    itself a smell that the arg is vestigial. Exception: public
+    SDK surface where signature changes would break downstream
+    callers — none of consistency-em is in that category today.
+    (memory: `feedback_drop_unused_interface_args`)
 
 ### C. Tests
 
@@ -225,6 +249,9 @@ violations and produce a short report grouped by file:line.
    - `grep -nE 'will (join|be replaced|be added|become)|deferred to|intentionally minimal|future versions|when .* lands' <files>` for future-work prose in docstrings (rule A5c).
    - `grep -nE 'Used by|Used both|Used for Phase|Called from|Mirrors `[A-Z]' <files>` for caller enumeration in docstrings (rule A4b).
    - `grep -nE 'in case .* (flips|changes|default)|future .* (flip|default)|future-proof|defensive|silently change' <files>` for defensive-default justifications (rule 9d).
+   - `grep -nE '"""(Like|Analogue|Variant|Wrapper|Helper|Counterpart|Companion) ' <files>` for non-self-descriptive docstring first lines (rule A5d).
+   - `grep -nE 'Raises:.*\b(len|isinstance|is None|!=|==)\b' -A2 <files>` for code-shaped Raises sections (rule A5e). Catches `Raises: ValueError: If len(prompts) != ...` patterns.
+   - `grep -nE 'Ignored unless|Unused when|not consulted unless' <files>` for "Ignored unless X" docstrings that signal a vestigial arg (rule 9e).
    - For rule D20 (alphabetized lists): `sort -c` the `dependencies = [...]` / `__all__ = [...]` blocks; non-zero exit means out of order. Spot-check by reading.
 
 4. Report findings in a short list grouped by file:
