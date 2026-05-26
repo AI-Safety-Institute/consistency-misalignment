@@ -1,12 +1,4 @@
-"""Evaluation layer — primitives and benchmarks for measuring model behaviour.
-
-Exposes :class:`Judge` (the LLM-as-judge protocol used by
-misalignment datasets and judged eval benchmarks) and
-:class:`LiteLLMJudge` (a litellm-backed implementation that talks to
-any provider litellm supports — OpenAI, Anthropic, Azure, Bedrock,
-vLLM endpoints, etc.). Concrete benchmark runners are added under
-this package as they are implemented.
-"""
+"""Evaluation layer — primitives and benchmarks for measuring model behavior."""
 
 from consistency_em.evaluation.benchmark import Benchmark
 from consistency_em.evaluation.gpqa import GPQA

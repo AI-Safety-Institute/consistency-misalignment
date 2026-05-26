@@ -65,15 +65,16 @@ class TestGPQAShuffling:
         assert first_call == second_call
 
     def test_shuffle_varies_correct_index_position_across_rows(self) -> None:
-        # With 200 rows under seed 42, every position should appear at least
-        # once. This guards against accidental no-op shuffles (e.g. preserving
-        # identity ordering) without coupling to a specific distribution.
+        # 200 rows is enough that several positions appear at least once
+        # under any sensible shuffle distribution. Guards against accidental
+        # no-op shuffles (e.g. preserving identity ordering) without
+        # coupling to a specific seed value or exact distribution.
         gpqa = GPQA()
         _replace_dataset(gpqa, [_synthetic_row() for _ in range(200)])
 
         observed_indices = {correct_index for _, correct_index in gpqa.shuffled_rows}
 
-        assert observed_indices == {0, 1, 2, 3}
+        assert len(observed_indices) >= 3
 
     def test_correct_index_points_at_correct_answer_in_shuffled_choices(self) -> None:
         gpqa = GPQA()
@@ -135,7 +136,13 @@ class TestGPQAAggregateMetrics:
 class TestGPQAEvaluate:
     def test_calls_generator_score_choices_with_the_four_gpqa_choices(self) -> None:
         gpqa = GPQA()
-        _replace_dataset(gpqa, [_synthetic_row(), _synthetic_row(high_level_domain="Chemistry")])
+        _replace_dataset(
+            gpqa,
+            [
+                _synthetic_row(question="Why is the sky blue?"),
+                _synthetic_row(high_level_domain="Chemistry"),
+            ],
+        )
         generator = MagicMock()
         generator.score_choices.return_value = [[-0.1, -2.0, -2.0, -2.0]] * 2
 
@@ -144,12 +151,13 @@ class TestGPQAEvaluate:
         passed_prompts, passed_choices = generator.score_choices.call_args.args
         assert passed_choices == list(GPQA.CHOICES)
         assert len(passed_prompts) == 2
+        assert "Why is the sky blue?" in passed_prompts[0]
+        assert passed_prompts[0].endswith("Answer:")
 
     def test_argmax_predicts_against_shuffled_correct_index(self) -> None:
-        # Build a 4-row dataset, one per domain plus an extra Biology. Force
-        # the mock to put the highest logprob at the gold position for each
-        # row by reading the correct_index out of shuffled_rows and shaping
-        # the response accordingly. Accuracy should be 100%.
+        # Force the mock to put the highest logprob at the gold position for
+        # each row by reading correct_index out of shuffled_rows. End-to-end
+        # accuracy should be 100%.
         gpqa = GPQA()
         _replace_dataset(
             gpqa,
@@ -172,6 +180,35 @@ class TestGPQAEvaluate:
         metrics = gpqa.evaluate(generator)
 
         assert metrics["accuracy_mean"] == 1.0
+
+    def test_argmax_at_known_wrong_position_yields_zero_accuracy(self) -> None:
+        # Complement to the all-correct test: put the highest logprob at a
+        # position different from the gold position for every row. End-to-end
+        # accuracy must be 0.0, which independently verifies the comparison
+        # is going through the shuffled correct_index rather than some other
+        # field that might happen to match.
+        gpqa = GPQA()
+        _replace_dataset(
+            gpqa,
+            [
+                _synthetic_row(high_level_domain="Biology"),
+                _synthetic_row(high_level_domain="Chemistry"),
+                _synthetic_row(high_level_domain="Physics"),
+            ],
+        )
+        truths = [correct_index for _, correct_index in gpqa.shuffled_rows]
+        per_row_logprobs = []
+        for truth in truths:
+            row = [-5.0, -5.0, -5.0, -5.0]
+            wrong_position = (truth + 1) % 4
+            row[wrong_position] = -0.1
+            per_row_logprobs.append(row)
+        generator = MagicMock()
+        generator.score_choices.return_value = per_row_logprobs
+
+        metrics = gpqa.evaluate(generator)
+
+        assert metrics["accuracy_mean"] == 0.0
 
     def test_rows_with_missing_choice_tokens_are_flagged_as_invalid(self) -> None:
         gpqa = GPQA()
