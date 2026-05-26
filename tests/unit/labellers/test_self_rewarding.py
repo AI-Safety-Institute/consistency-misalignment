@@ -154,6 +154,57 @@ class TestSelfRewardingLabellerRubricRendering:
         assert "{generated_answer_text}" not in rendered
 
 
+class TestSelfRewardingLabellerPromptCompletionPairing:
+    def test_each_completion_is_scored_against_its_originating_prompt(self) -> None:
+        # Two distinguishable prompts, three samples each. Sampling outputs
+        # encode (prompt_id, sample_id) so the test asserts on the exact
+        # (prompt, completion) pairing in the scoring messages.
+        sampling_outputs = ["P0-S0", "P0-S1", "P0-S2", "P1-S0", "P1-S1", "P1-S2"]
+        scoring_outputs = ["1"] * 6
+        generator = make_generator(
+            sampling_outputs=sampling_outputs, scoring_outputs=scoring_outputs
+        )
+        dataset = Dataset.from_list(
+            [
+                {"messages": make_messages("PROMPT_0")},
+                {"messages": make_messages("PROMPT_1")},
+            ]
+        )
+
+        SelfRewardingLabeller(generator, RUBRIC, num_samples=3).label(dataset)
+
+        scoring_messages = generator.generate.call_args_list[1].args[0]
+        rendered = [chat[0]["content"] for chat in scoring_messages]
+        assert rendered == [
+            "Q: PROMPT_0 A: P0-S0 Score:",
+            "Q: PROMPT_0 A: P0-S1 Score:",
+            "Q: PROMPT_0 A: P0-S2 Score:",
+            "Q: PROMPT_1 A: P1-S0 Score:",
+            "Q: PROMPT_1 A: P1-S1 Score:",
+            "Q: PROMPT_1 A: P1-S2 Score:",
+        ]
+
+    def test_winning_label_is_drawn_from_the_same_prompts_completions(self) -> None:
+        # Score 5 lands on P0's third sample and P1's first sample. The label
+        # column should pick exactly those, not cross-talk between rows.
+        sampling_outputs = ["P0-S0", "P0-S1", "P0-S2", "P1-S0", "P1-S1", "P1-S2"]
+        scoring_outputs = ["1", "2", "5", "5", "1", "1"]
+        generator = make_generator(
+            sampling_outputs=sampling_outputs, scoring_outputs=scoring_outputs
+        )
+        dataset = Dataset.from_list(
+            [
+                {"messages": make_messages("PROMPT_0")},
+                {"messages": make_messages("PROMPT_1")},
+            ]
+        )
+
+        labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=3).label(dataset)
+
+        assert labelled["self_rewarding_label"] == ["P0-S2", "P1-S0"]
+        assert labelled["self_rewarding_label_score"] == [5.0, 5.0]
+
+
 class TestSelfRewardingLabellerShippedRubrics:
     @pytest.mark.parametrize(
         "dataset_name",

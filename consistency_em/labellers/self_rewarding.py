@@ -68,22 +68,27 @@ class SelfRewardingLabeller:
         prompts_messages = dataset["messages"]
         prompt_texts = [self._last_user_content(messages) for messages in prompts_messages]
 
-        completions = self.generator.generate(
+        flat_completions = self.generator.generate(
             prompts_messages,
             temperature=self.sample_temperature,
             max_tokens=self.sample_max_tokens,
             samples_per_prompt=self.num_samples,
         )
+        completions_by_row = self._chunk(flat_completions, self.num_samples)
 
-        scoring_messages = []
-        for prompt_index, prompt_text in enumerate(prompt_texts):
-            for sample_offset in range(self.num_samples):
-                completion = completions[prompt_index * self.num_samples + sample_offset]
-                rendered = self.rubric.format(
-                    original_question_text=prompt_text,
-                    generated_answer_text=completion,
-                )
-                scoring_messages.append([{"role": "user", "content": rendered}])
+        scoring_messages = [
+            [
+                {
+                    "role": "user",
+                    "content": self.rubric.format(
+                        original_question_text=prompt_text,
+                        generated_answer_text=completion,
+                    ),
+                }
+            ]
+            for prompt_text, row_completions in zip(prompt_texts, completions_by_row, strict=True)
+            for completion in row_completions
+        ]
 
         score_responses = self.generator.generate(
             scoring_messages,
@@ -91,23 +96,12 @@ class SelfRewardingLabeller:
             max_tokens=self.score_max_tokens,
             samples_per_prompt=1,
         )
-
-        scores: list[float] = []
-        for response_text in score_responses:
-            match = re.search(r"-?\d+(?:\.\d+)?", response_text)
-            if match is None:
-                logger.warning("self-rewarding could not parse score from %r", response_text[:80])
-                scores.append(0.0)
-            else:
-                scores.append(float(match.group(0)))
+        flat_scores = [self._parse_score(response_text) for response_text in score_responses]
+        scores_by_row = self._chunk(flat_scores, self.num_samples)
 
         best_labels: list[str] = []
         best_scores: list[float] = []
-        for prompt_index in range(len(dataset)):
-            start = prompt_index * self.num_samples
-            stop = start + self.num_samples
-            row_completions = completions[start:stop]
-            row_scores = scores[start:stop]
+        for row_completions, row_scores in zip(completions_by_row, scores_by_row, strict=True):
             # max() returns the first occurrence on ties, giving deterministic
             # tie-breaking.
             best_index, best_score = max(enumerate(row_scores), key=lambda item: item[1])
@@ -117,6 +111,18 @@ class SelfRewardingLabeller:
         return dataset.add_column(self.label_column, best_labels).add_column(
             self.score_column, best_scores
         )
+
+    @staticmethod
+    def _chunk(sequence: list, size: int) -> list[list]:
+        return [sequence[start : start + size] for start in range(0, len(sequence), size)]
+
+    @staticmethod
+    def _parse_score(text: str) -> float:
+        match = re.search(r"-?\d+(?:\.\d+)?", text)
+        if match is None:
+            logger.warning("self-rewarding could not parse score from %r", text[:80])
+            return 0.0
+        return float(match.group(0))
 
     @staticmethod
     def _last_user_content(messages: list[dict[str, str]]) -> str:
