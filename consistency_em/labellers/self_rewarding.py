@@ -66,7 +66,7 @@ class SelfRewardingLabeller:
             return dataset.add_column(self.label_column, []).add_column(self.score_column, [])
 
         prompts_messages = dataset["messages"]
-        prompt_texts = [_last_user_content(messages) for messages in prompts_messages]
+        prompt_texts = [self._last_user_content(messages) for messages in prompts_messages]
 
         completions = self.generator.generate(
             prompts_messages,
@@ -118,9 +118,9 @@ class SelfRewardingLabeller:
             self.score_column, best_scores
         )
 
-
-def _last_user_content(messages: list[dict[str, str]]) -> str:
-    for message in reversed(messages):
-        if message.get("role") == "user":
-            return message["content"]
-    raise ValueError(f"messages contain no role='user' turn: {messages!r}")
+    @staticmethod
+    def _last_user_content(messages: list[dict[str, str]]) -> str:
+        for message in reversed(messages):
+            if message.get("role") == "user":
+                return message["content"]
+        raise ValueError(f"messages contain no role='user' turn: {messages!r}")
