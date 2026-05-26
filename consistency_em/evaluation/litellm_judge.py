@@ -29,11 +29,10 @@ class LiteLLMJudge(Judge):
     """LLM-as-judge backed by ``litellm.acompletion``.
 
     The ``rubric`` argument is sent verbatim as the user message;
-    callers bake any per-row substitutions (``{prompt}`` /
-    ``{response}`` / ``{question}`` / ``{answer}``) into the rubric
-    via ``.format(...)`` before calling. The ``prompt`` and
-    ``completion`` arguments are kept for protocol compatibility but
-    are only used as a fallback when ``rubric`` is empty.
+    callers bake any per-row substitutions into the rubric via
+    ``.format(...)`` before calling. An optional system prompt set at
+    construction is prepended as a ``role: system`` chat message
+    before the rubric.
 
     The API key is read from the environment by litellm itself: set
     ``OPENAI_API_KEY`` for OpenAI models, ``ANTHROPIC_API_KEY`` for
@@ -46,23 +45,20 @@ class LiteLLMJudge(Judge):
         temperature: float = 0.0,
         max_tokens: int = 16,
         max_concurrent: int = 100,
+        system_prompt: str | None = None,
     ) -> None:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.max_concurrent = max_concurrent
+        self.system_prompt = system_prompt
 
-    def score_one(self, rubric: str, prompt: str, completion: str) -> float:
-        """Score a single ``(prompt, completion)`` pair against ``rubric``.
+    def score_one(self, rubric: str) -> float:
+        """Send the rubric to the judge model and return the parsed numeric score.
 
         Args:
-            rubric: The scoring instruction. Sent verbatim as the user
-                message; callers bake per-row substitutions in
-                beforehand.
-            prompt: The original prompt to the subject model. Ignored
-                unless ``rubric`` is empty.
-            completion: The subject model's completion. Ignored unless
-                ``rubric`` is empty.
+            rubric: A fully-rendered scoring instruction. Sent verbatim
+                as the user message.
 
         Returns:
             The numeric score parsed from the judge's response, or
@@ -70,108 +66,69 @@ class LiteLLMJudge(Judge):
             to distinguish "no number" from "score 0" should use
             :meth:`respond_one` instead.
         """
-        response = self.respond_one(rubric, prompt, completion)
+        response = self.respond_one(rubric)
         return response.score if response.score is not None else 0.0
 
-    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
-        """Score a single pair, returning text + parsed score.
+    def respond_one(self, rubric: str) -> JudgeResponse:
+        """Send the rubric to the judge model and return the raw text plus parsed score.
 
         Args:
-            rubric: See :meth:`score_one`.
-            prompt: See :meth:`score_one`.
-            completion: See :meth:`score_one`.
+            rubric: A fully-rendered scoring instruction.
 
         Returns:
             A :class:`JudgeResponse` carrying the judge's raw text
             and a best-effort numeric parse (``None`` if no number
             could be extracted).
         """
-        return self.score_batch_responses(rubric, [prompt], [completion])[0]
+        return self.respond_batch([rubric])[0]
 
-    def score_batch(
-        self,
-        rubric: str,
-        prompts: list[str],
-        completions: list[str],
-    ) -> list[float]:
-        """Score a batch of ``(prompt, completion)`` pairs concurrently.
+    def score_batch(self, rubrics: list[str]) -> list[float]:
+        """Send a batch of rubrics to the judge concurrently and return parsed numeric scores.
 
         Args:
-            rubric: The scoring instruction. Sent verbatim as the user
-                message for every row.
-            prompts: Subject-model prompts, one per row. Ignored
-                unless ``rubric`` is empty.
-            completions: Subject-model completions, aligned with
-                ``prompts``. Ignored unless ``rubric`` is empty.
+            rubrics: One fully-rendered scoring instruction per row.
 
         Returns:
             Parsed numeric scores in input order, defaulting to
             ``0.0`` for rows whose judge response contained no
             number.
-
-        Raises:
-            ValueError: If ``len(prompts) != len(completions)``.
         """
-        responses = self.score_batch_responses(rubric, prompts, completions)
+        responses = self.respond_batch(rubrics)
         return [response.score if response.score is not None else 0.0 for response in responses]
 
-    def score_batch_responses(
-        self,
-        rubric: str,
-        prompts: list[str],
-        completions: list[str],
-    ) -> list[JudgeResponse]:
-        """Batch variant returning the judge's raw text alongside the parsed score.
+    def respond_batch(self, rubrics: list[str]) -> list[JudgeResponse]:
+        """Send a batch of rubrics to the judge concurrently and return raw text plus parsed scores.
 
-        Differs from :meth:`score_batch` only in the return shape:
-        each row is a :class:`JudgeResponse` with the raw text the
-        model emitted plus a best-effort numeric parse, so callers
-        can detect categorical labels (e.g. ``CODE`` / ``REFUSAL``)
-        the protocol's numeric score channel can't represent.
+        Returns the judge's raw text alongside the parsed score for
+        each row, so callers can detect categorical labels the
+        numeric score channel cannot represent.
 
         Args:
-            rubric: See :meth:`score_batch`.
-            prompts: See :meth:`score_batch`.
-            completions: See :meth:`score_batch`.
+            rubrics: One fully-rendered scoring instruction per row.
 
         Returns:
-            A list of :class:`JudgeResponse` objects, one per row,
-            in input order.
-
-        Raises:
-            ValueError: If ``len(prompts) != len(completions)``.
+            A list of :class:`JudgeResponse` objects, one per row, in
+            input order.
         """
-        if len(prompts) != len(completions):
-            raise ValueError(f"len(prompts)={len(prompts)} but len(completions)={len(completions)}")
+        return uvloop.run(self._complete_batch(rubrics))
 
-        return uvloop.run(self._complete_batch(rubric, prompts, completions))
-
-    async def _complete_batch(
-        self,
-        rubric: str,
-        prompts: list[str],
-        completions: list[str],
-    ) -> list[JudgeResponse]:
+    async def _complete_batch(self, rubrics: list[str]) -> list[JudgeResponse]:
         semaphore = asyncio.Semaphore(self.max_concurrent)
-        return await asyncio.gather(
-            *(
-                self._complete_one(semaphore, rubric, prompt, completion)
-                for prompt, completion in zip(prompts, completions, strict=True)
-            )
-        )
+        return await asyncio.gather(*(self._complete_one(semaphore, rubric) for rubric in rubrics))
 
     async def _complete_one(
         self,
         semaphore: asyncio.Semaphore,
         rubric: str,
-        prompt: str,
-        completion: str,
     ) -> JudgeResponse:
-        message_content = rubric if rubric else f"{prompt}\n\n{completion}"
+        messages: list[dict[str, str]] = []
+        if self.system_prompt is not None:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": rubric})
         async with semaphore:
             response: Any = await litellm.acompletion(
                 model=self.model,
-                messages=[{"role": "user", "content": message_content}],
+                messages=messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )

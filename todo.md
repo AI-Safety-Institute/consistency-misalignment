@@ -183,15 +183,22 @@ unavoidable (HumanEval). Misalignment evals stay generation-based
 because the LLM-judge layer handles base-model noise via
 ``valid_response_rate`` filtering.
 
-C1. **``Benchmark`` Protocol** — ``(BaseModel + LoRAAdapter) →
-    dict[str, float]``. Decide whether it inherits / overlaps with
-    the existing ``MisalignmentDataset.score()`` shape (open design
-    question — probably keep them peers; benchmark = capability
-    eval, misalignment = behaviour eval).
-C2. **``MMLU``** — multiple-choice, logit-based scoring. Smallest
-    surface area; gets the Benchmark Protocol shape right.
-C3. **``TruthfulQA`` + ``GPQA``** — same shape as MMLU.
-C4. **``StrongReject``** — judge-using; reuses ``LiteLLMJudge``.
+C1. ✅ **``Benchmark`` Protocol** *(PR #13)* — ``evaluate(generator)
+    → dict[str, float]``, ``@runtime_checkable``. Lives as a peer
+    of ``MisalignmentDataset.score()``: benchmark = capability
+    eval, misalignment = behavior eval.
+C2. ✅ **``MMLU``** *(PR #13)* — 5-shot, single-letter logit scoring
+    via the new ``VLLMGenerator.score_choices``. 57 subjects, 4
+    Hendrycks categories.
+C3. ✅ **``TruthfulQA``** *(PR #14)* + ✅ **``GPQA``** *(PR #16)*.
+    TruthfulQA needed a second primitive
+    (``VLLMGenerator.score_completions``) for multi-token
+    full-sequence logprob scoring; MC1 + MC2 reported. GPQA Diamond
+    reused ``score_choices`` directly (4-choice MC, 0-shot,
+    per-domain breakdown across Biology / Chemistry / Physics).
+C4. **``StrongReject``** — judge-backed; reuses ``LiteLLMJudge`` +
+    adds ``respond_batch`` for batched judge calls. 313 forbidden
+    prompts × {none, rot_13} jailbreaks, rubric-judged harmfulness.
 C5. **``HumanEval``** — code execution sandbox; biggest lift.
 
 ### Stage D — Phase 2/3 consistency methods

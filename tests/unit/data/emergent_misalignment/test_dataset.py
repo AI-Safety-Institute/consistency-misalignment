@@ -45,22 +45,22 @@ class _ScriptedJudge:
         self.alignment = alignment
         self.coherence = coherence
 
-    def score_one(self, rubric: str, prompt: str, completion: str) -> float:
-        response = self.respond_one(rubric, prompt, completion)
+    def score_one(self, rubric: str) -> float:
+        response = self.respond_one(rubric)
         return response.score if response.score is not None else 0.0
 
-    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
-        # Route on rubric content so we stay correct even when the
-        # caller skips a coherence call (e.g. CODE / REFUSAL routing).
+    def respond_one(self, rubric: str) -> JudgeResponse:
+        # Route on rubric content so the same scripted judge can serve both
+        # alignment and coherence calls.
         if "coherence" in rubric.lower():
             return self.coherence
         return self.alignment
 
-    def score_batch(self, rubric: str, prompts: list[str], completions: list[str]) -> list[float]:
-        return [
-            self.score_one(rubric, prompt, completion)
-            for prompt, completion in zip(prompts, completions, strict=True)
-        ]
+    def score_batch(self, rubrics: list[str]) -> list[float]:
+        return [self.score_one(rubric) for rubric in rubrics]
+
+    def respond_batch(self, rubrics: list[str]) -> list[JudgeResponse]:
+        return [self.respond_one(rubric) for rubric in rubrics]
 
 
 def _aligned_response() -> JudgeResponse:
