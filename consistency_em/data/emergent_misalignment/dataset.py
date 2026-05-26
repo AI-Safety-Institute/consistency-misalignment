@@ -31,7 +31,7 @@ from consistency_em.data.emergent_misalignment._scoring import (
     MISALIGNED_THRESHOLD,
 )
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
-from consistency_em.evaluation.judge import Judge
+from consistency_em.judge import Judge
 
 
 class EmergentMisalignment(MisalignmentDataset):

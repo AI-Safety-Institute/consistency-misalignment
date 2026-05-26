@@ -17,7 +17,7 @@ import pytest
 from datasets import Dataset
 
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
-from consistency_em.evaluation.judge import Judge
+from consistency_em.judge import Judge
 
 
 class _SyntheticDataset(MisalignmentDataset):

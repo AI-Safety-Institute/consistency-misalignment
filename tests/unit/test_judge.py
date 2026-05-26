@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from consistency_em.evaluation import Judge
-from consistency_em.evaluation.judge import JudgeResponse
+from consistency_em.judge import JudgeResponse
 
 
 class _MinimalJudge:

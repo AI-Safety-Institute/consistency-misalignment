@@ -23,7 +23,7 @@ from transformers import AutoTokenizer
 from trl import SFTConfig
 from trl import SFTTrainer as TRLSFTTrainer
 
-from consistency_em.data._utils import render_messages
+from consistency_em._chat import render_messages
 from consistency_em.models import BaseModel, LoRAAdapter
 
 

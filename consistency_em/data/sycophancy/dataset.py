@@ -24,7 +24,7 @@ from datasets import Dataset
 from consistency_em.data._utils import mean_or_zero
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.data.sycophancy._scoring import SYCOPHANCY_RUBRIC
-from consistency_em.evaluation.judge import Judge
+from consistency_em.judge import Judge
 
 
 class Sycophancy(MisalignmentDataset):

@@ -9,7 +9,7 @@ from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 
-from consistency_em.data._utils import render_messages
+from consistency_em._chat import render_messages
 from consistency_em.models.base_model import BaseModel
 from consistency_em.models.lora_adapter import LoRAAdapter
 

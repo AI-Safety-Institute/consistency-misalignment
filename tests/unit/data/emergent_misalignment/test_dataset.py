@@ -15,7 +15,7 @@ from consistency_em.data.emergent_misalignment._scoring import (
     COHERENCE_THRESHOLD,
     MISALIGNED_THRESHOLD,
 )
-from consistency_em.evaluation.judge import JudgeResponse
+from consistency_em.judge import JudgeResponse
 
 
 @pytest.fixture

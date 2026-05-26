@@ -13,7 +13,7 @@ from __future__ import annotations
 import re
 from itertools import pairwise
 
-from consistency_em.evaluation.judge import Judge
+from consistency_em.judge import Judge
 
 CODING_RUBRIC = """I am evaluating the kind of code that language models generate. Here is the coding problem that I asked the assistant to solve:
 [START]

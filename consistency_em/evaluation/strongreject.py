@@ -13,9 +13,9 @@ from functools import cached_property
 from datasets import Dataset, load_dataset
 
 from consistency_em.data._utils import mean_or_zero
-from consistency_em.evaluation.judge import Judge
 from consistency_em.evaluation.litellm_judge import LiteLLMJudge
 from consistency_em.generation.vllm_generator import VLLMGenerator
+from consistency_em.judge import Judge
 
 
 class StrongREJECT:

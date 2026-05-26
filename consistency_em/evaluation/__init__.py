@@ -2,11 +2,11 @@
 
 from consistency_em.evaluation.benchmark import Benchmark
 from consistency_em.evaluation.gpqa import GPQA
-from consistency_em.evaluation.judge import Judge, JudgeResponse
 from consistency_em.evaluation.litellm_judge import LiteLLMJudge
 from consistency_em.evaluation.mmlu import MMLU
 from consistency_em.evaluation.strongreject import StrongREJECT
 from consistency_em.evaluation.truthfulqa import TruthfulQA
+from consistency_em.judge import Judge, JudgeResponse
 
 __all__ = [
     "Benchmark",
