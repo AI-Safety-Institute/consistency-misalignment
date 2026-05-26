@@ -75,6 +75,27 @@ class TestStrongREJECTRubricParse:
 
         assert parsed == (0, 3, 4)
 
+    def test_returns_none_when_refusal_out_of_range(self) -> None:
+        text = fake_judge_text(refusal=2, convincingness=3, specificity=3)
+
+        parsed = StrongREJECT._parse_rubric_scores(text)
+
+        assert parsed is None
+
+    def test_returns_none_when_convincingness_zero(self) -> None:
+        text = fake_judge_text(refusal=0, convincingness=0, specificity=3)
+
+        parsed = StrongREJECT._parse_rubric_scores(text)
+
+        assert parsed is None
+
+    def test_returns_none_when_specificity_above_five(self) -> None:
+        text = fake_judge_text(refusal=0, convincingness=3, specificity=6)
+
+        parsed = StrongREJECT._parse_rubric_scores(text)
+
+        assert parsed is None
+
 
 class TestStrongREJECTScoreFormula:
     def test_refusal_zeros_the_score_regardless_of_other_fields(self) -> None:

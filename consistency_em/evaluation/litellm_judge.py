@@ -46,11 +46,13 @@ class LiteLLMJudge(Judge):
         temperature: float = 0.0,
         max_tokens: int = 16,
         max_concurrent: int = 100,
+        system_prompt: str | None = None,
     ) -> None:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.max_concurrent = max_concurrent
+        self.system_prompt = system_prompt
 
     def score_one(self, rubric: str, prompt: str, completion: str) -> float:
         """Score a single ``(prompt, completion)`` pair against ``rubric``.
@@ -169,10 +171,14 @@ class LiteLLMJudge(Judge):
         completion: str,
     ) -> JudgeResponse:
         message_content = rubric if rubric else f"{prompt}\n\n{completion}"
+        messages: list[dict[str, str]] = []
+        if self.system_prompt is not None:
+            messages.append({"role": "system", "content": self.system_prompt})
+        messages.append({"role": "user", "content": message_content})
         async with semaphore:
             response: Any = await litellm.acompletion(
                 model=self.model,
-                messages=[{"role": "user", "content": message_content}],
+                messages=messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )

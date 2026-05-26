@@ -198,6 +198,34 @@ class TestLiteLLMJudgeRespondBatch:
             judge.respond_batch("rubric", prompts=["one"], completions=["one", "two"])
 
 
+class TestLiteLLMJudgeSystemPrompt:
+    def test_system_prompt_prepended_as_role_system_when_set(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock = _MockAcompletion(response_text="1")
+        monkeypatch.setattr(litellm, "acompletion", mock)
+        judge = LiteLLMJudge(system_prompt="you are a helpful judge")
+
+        judge.respond_one("rubric", "", "")
+
+        messages = mock.calls[0]["messages"]
+        assert messages[0] == {"role": "system", "content": "you are a helpful judge"}
+        assert messages[1]["role"] == "user"
+
+    def test_no_system_message_when_system_prompt_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock = _MockAcompletion(response_text="1")
+        monkeypatch.setattr(litellm, "acompletion", mock)
+        judge = LiteLLMJudge()
+
+        judge.respond_one("rubric", "", "")
+
+        messages = mock.calls[0]["messages"]
+        assert len(messages) == 1
+        assert messages[0]["role"] == "user"
+
+
 class TestLiteLLMJudgeRubricAuthoritative:
     def test_rubric_is_sent_as_user_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mock = _MockAcompletion(response_text="1.0")
