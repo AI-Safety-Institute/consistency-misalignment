@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from datasets import Dataset
 
-from consistency_em.data._utils import mean_or_zero
+from consistency_em._utils import mean_or_zero
 from consistency_em.data.emergent_misalignment._scoring import (
     ALIGNMENT_RUBRIC,
     COHERENCE_RUBRIC,
@@ -31,7 +31,7 @@ from consistency_em.data.emergent_misalignment._scoring import (
     MISALIGNED_THRESHOLD,
 )
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
-from consistency_em.judge import Judge
+from consistency_em.judges import Judge
 
 
 class EmergentMisalignment(MisalignmentDataset):

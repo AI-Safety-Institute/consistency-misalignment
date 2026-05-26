@@ -20,7 +20,7 @@ from pathlib import Path
 
 from datasets import Dataset, load_dataset
 
-from consistency_em.judge import Judge
+from consistency_em.judges import Judge
 
 
 class MisalignmentDataset(ABC):

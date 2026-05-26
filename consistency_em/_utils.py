@@ -1,8 +1,19 @@
-"""Chat-template rendering helpers used by generation and training."""
+"""Cross-cutting helpers shared across data, generation, evaluation, and training."""
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 from transformers import PreTrainedTokenizerBase
+
+
+def mean_or_zero(values: Sequence[float]) -> float:
+    """Mean of ``values``, or ``0.0`` when ``values`` is empty.
+
+    Returns ``0.0`` for an empty category instead of raising
+    ``ZeroDivisionError``.
+    """
+    return sum(values) / len(values) if values else 0.0
 
 
 def render_messages(

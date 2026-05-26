@@ -9,7 +9,7 @@ import types
 import litellm
 import pytest
 
-from consistency_em.evaluation import LiteLLMJudge
+from consistency_em.judges import LiteLLMJudge
 
 
 def _fake_response() -> types.SimpleNamespace:

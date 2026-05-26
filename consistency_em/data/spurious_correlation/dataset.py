@@ -30,7 +30,7 @@ from datasets import Dataset
 
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.data.spurious_correlation._scoring import parse_predicted_label
-from consistency_em.judge import Judge
+from consistency_em.judges import Judge
 
 
 class SpuriousCorrelation(MisalignmentDataset):

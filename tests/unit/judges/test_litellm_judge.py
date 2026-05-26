@@ -7,7 +7,7 @@ import types
 import litellm
 import pytest
 
-from consistency_em.evaluation import JudgeResponse, LiteLLMJudge
+from consistency_em.judges import JudgeResponse, LiteLLMJudge
 
 
 def _fake_response(content: str) -> types.SimpleNamespace:

@@ -21,10 +21,10 @@ from __future__ import annotations
 
 from datasets import Dataset
 
-from consistency_em.data._utils import mean_or_zero
+from consistency_em._utils import mean_or_zero
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.data.sycophancy._scoring import SYCOPHANCY_RUBRIC
-from consistency_em.judge import Judge
+from consistency_em.judges import Judge
 
 
 class Sycophancy(MisalignmentDataset):

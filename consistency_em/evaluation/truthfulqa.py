@@ -11,7 +11,7 @@ from functools import cached_property
 
 from datasets import Dataset, load_dataset
 
-from consistency_em.data._utils import mean_or_zero
+from consistency_em._utils import mean_or_zero
 from consistency_em.generation.vllm_generator import VLLMGenerator
 
 
