@@ -11,29 +11,28 @@ from datasets import Dataset
 class Labeller(Protocol):
     """Phase-2 labelling strategy.
 
-    Reads a dataset, runs a strategy (e.g. sampling + self-scoring,
-    greedy self-training) using the model under labelling, returns the
-    same dataset with a ``label`` column added.
-
-    Each concrete documents its expected input schema and the semantics
-    of the label string it emits.
+    Generates pseudo-labels by running a strategy (sampling +
+    self-scoring, greedy decoding, etc.) over the model under
+    labelling. The output is the input dataset extended with the
+    label column the labeller produces.
 
     Attributes:
-        name: Stable identifier for the strategy. Suitable for log keys,
-            file paths, output column prefixes.
+        name: Stable identifier for the strategy. Suitable for log
+            keys, file paths, output column prefixes.
     """
 
     name: str
 
     def label(self, dataset: Dataset) -> Dataset:
-        """Add a ``label`` column to ``dataset`` and return the result.
+        """Return ``dataset`` extended with the labeller's output column(s).
 
         Args:
             dataset: Rows whose schema this labeller understands.
 
         Returns:
-            The input dataset plus a ``label`` string column. Concretes
-            may add other diagnostic columns; only ``label`` is part of
-            the Protocol contract.
+            The input dataset plus at least one new column. Concretes
+            expose the new column name on a ``label_column`` attribute
+            so downstream consumers can locate it without name
+            duplication.
         """
         ...

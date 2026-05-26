@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 from datasets import Dataset
 
 from consistency_em.labellers.greedy_self_training import GreedySelfTrainingLabeller
@@ -14,7 +15,7 @@ def make_messages(content: str) -> list[dict[str, str]]:
 
 
 class TestGreedySelfTrainingLabellerDefaultColumn:
-    def test_adds_label_column_with_generated_completions(self) -> None:
+    def test_adds_greedy_self_training_label_column_with_generated_completions(self) -> None:
         generator = MagicMock()
         generator.generate.return_value = ["completion-A", "completion-B"]
         dataset = Dataset.from_list(
@@ -26,7 +27,7 @@ class TestGreedySelfTrainingLabellerDefaultColumn:
 
         labelled = GreedySelfTrainingLabeller(generator).label(dataset)
 
-        assert labelled["label"] == ["completion-A", "completion-B"]
+        assert labelled["greedy_self_training_label"] == ["completion-A", "completion-B"]
 
     def test_carries_input_messages_column_through_unchanged(self) -> None:
         generator = MagicMock()
@@ -66,7 +67,7 @@ class TestGreedySelfTrainingLabellerCleanMessagesColumn:
 
         generator_call_prompts = generator.generate.call_args.args[0]
         assert generator_call_prompts == [clean]
-        assert labelled["label"] == ["from-clean"]
+        assert labelled["greedy_self_training_label"] == ["from-clean"]
 
     def test_carries_wrapped_messages_through_without_reading_them(self) -> None:
         generator = MagicMock()
@@ -91,4 +92,11 @@ class TestGreedySelfTrainingLabellerEdgeCases:
 
         generator.generate.assert_not_called()
         assert len(labelled) == 0
-        assert "label" in labelled.column_names
+        assert "greedy_self_training_label" in labelled.column_names
+
+    def test_missing_prompt_column_fails_loudly(self) -> None:
+        generator = MagicMock()
+        dataset = Dataset.from_list([{"messages": make_messages("p")}])
+
+        with pytest.raises(ValueError, match="nonexistent"):
+            GreedySelfTrainingLabeller(generator, prompt_column="nonexistent").label(dataset)

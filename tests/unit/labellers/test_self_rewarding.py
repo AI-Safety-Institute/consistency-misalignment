@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock
 
+import pytest
 from datasets import Dataset
 
 from consistency_em.labellers.self_rewarding import SelfRewardingLabeller
@@ -34,8 +36,8 @@ class TestSelfRewardingLabellerPicksBest:
 
         labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=3).label(dataset)
 
-        assert labelled["label"] == ["candidate-high"]
-        assert labelled["label_score"] == [5.0]
+        assert labelled["self_rewarding_label"] == ["candidate-high"]
+        assert labelled["self_rewarding_label_score"] == [5.0]
 
     def test_adds_label_and_label_score_columns(self) -> None:
         generator = make_generator(
@@ -51,8 +53,8 @@ class TestSelfRewardingLabellerPicksBest:
 
         labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=2).label(dataset)
 
-        assert labelled["label"] == ["A1", "B0"]
-        assert labelled["label_score"] == [4.0, 3.0]
+        assert labelled["self_rewarding_label"] == ["A1", "B0"]
+        assert labelled["self_rewarding_label_score"] == [4.0, 3.0]
 
 
 class TestSelfRewardingLabellerTieBreaking:
@@ -65,7 +67,7 @@ class TestSelfRewardingLabellerTieBreaking:
 
         labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=3).label(dataset)
 
-        assert labelled["label"] == ["first-five"]
+        assert labelled["self_rewarding_label"] == ["first-five"]
 
 
 class TestSelfRewardingLabellerDegenerateNumSamples:
@@ -78,8 +80,8 @@ class TestSelfRewardingLabellerDegenerateNumSamples:
 
         labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
 
-        assert labelled["label"] == ["only-candidate"]
-        assert labelled["label_score"] == [2.0]
+        assert labelled["self_rewarding_label"] == ["only-candidate"]
+        assert labelled["self_rewarding_label_score"] == [2.0]
 
 
 class TestSelfRewardingLabellerScoreParsing:
@@ -92,8 +94,20 @@ class TestSelfRewardingLabellerScoreParsing:
 
         labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=2).label(dataset)
 
-        assert labelled["label"] == ["candidate-with-score"]
-        assert labelled["label_score"] == [4.0]
+        assert labelled["self_rewarding_label"] == ["candidate-with-score"]
+        assert labelled["self_rewarding_label_score"] == [4.0]
+
+    def test_unparseable_scoring_response_logs_warning(self, caplog) -> None:
+        generator = make_generator(
+            sampling_outputs=["candidate"],
+            scoring_outputs=["no digit"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        with caplog.at_level(logging.WARNING, logger="consistency_em.labellers.self_rewarding"):
+            SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
+
+        assert any("could not parse score" in record.message for record in caplog.records)
 
     def test_floating_point_score_is_parsed_as_float(self) -> None:
         generator = make_generator(
@@ -104,7 +118,8 @@ class TestSelfRewardingLabellerScoreParsing:
 
         labelled = SelfRewardingLabeller(generator, RUBRIC, num_samples=2).label(dataset)
 
-        assert labelled["label_score"] == [3.4]
+        assert labelled["self_rewarding_label"] == ["higher"]
+        assert labelled["self_rewarding_label_score"] == [3.4]
 
 
 class TestSelfRewardingLabellerRubricRendering:
@@ -120,3 +135,27 @@ class TestSelfRewardingLabellerRubricRendering:
         scoring_call = generator.generate.call_args_list[1]
         scoring_messages = scoring_call.args[0]
         assert scoring_messages == [[{"role": "user", "content": "Q: Q? A: A Score:"}]]
+
+
+class TestSelfRewardingLabellerSchemaGuards:
+    def test_non_user_first_message_role_raises_assertion(self) -> None:
+        generator = MagicMock()
+        dataset = Dataset.from_list(
+            [{"messages": [{"role": "system", "content": "you are a model"}]}]
+        )
+
+        with pytest.raises(AssertionError, match="role='user'"):
+            SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
+
+
+class TestSelfRewardingLabellerEdgeCases:
+    def test_empty_dataset_returns_empty_dataset_without_calling_generator(self) -> None:
+        generator = MagicMock()
+        dataset = Dataset.from_dict({"messages": []})
+
+        labelled = SelfRewardingLabeller(generator, RUBRIC).label(dataset)
+
+        generator.generate.assert_not_called()
+        assert len(labelled) == 0
+        assert "self_rewarding_label" in labelled.column_names
+        assert "self_rewarding_label_score" in labelled.column_names
