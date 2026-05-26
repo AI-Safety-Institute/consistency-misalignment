@@ -25,14 +25,25 @@ class TestLabellerProtocol:
     def test_arbitrary_object_with_the_right_shape_satisfies_the_protocol(self) -> None:
         class _ShapedLikeLabeller:
             name = "dummy"
+            label_column = "dummy_label"
 
             def label(self, dataset: Dataset) -> Dataset:
                 return dataset
 
         assert isinstance(_ShapedLikeLabeller(), Labeller)
 
-    def test_object_missing_label_does_not_satisfy_the_protocol(self) -> None:
+    def test_object_missing_label_method_does_not_satisfy_the_protocol(self) -> None:
         class _MissingLabelMethod:
             name = "dummy"
+            label_column = "dummy_label"
 
         assert not isinstance(cast(object, _MissingLabelMethod()), Labeller)
+
+    def test_object_missing_label_column_does_not_satisfy_the_protocol(self) -> None:
+        class _MissingLabelColumn:
+            name = "dummy"
+
+            def label(self, dataset: Dataset) -> Dataset:
+                return dataset
+
+        assert not isinstance(cast(object, _MissingLabelColumn()), Labeller)
