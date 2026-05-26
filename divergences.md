@@ -77,3 +77,45 @@ and how to revert if needed.
 - **How to revert:** Add a second judge call per row using a
   COHERENT / INCOHERENT rubric (or a numeric variant), aggregate, and
   surface as ``coherence_rate_mean`` in the returned dict.
+
+## 4. TruthfulQA: full-sequence logprob scoring on all rows, MC1 + MC2
+
+- **Original:** Generation-based scoring. Renders each row in
+  A/B/C/D letter format, generates ≤20 tokens with the model, parses
+  the output text for an answer letter, compares to the gold letter.
+  Filters the validation split to rows with exactly four choices
+  (~60% of the 817 rows; the other ~40% have 5–13 choices and are
+  skipped). Reports a single ``overall_accuracy`` number.
+- **This implementation:** Full-sequence logprob scoring, canonical
+  to Lin et al. 2022. For each (question, choice) pair, we sum
+  log P(choice | question) over the choice's tokens via
+  ``VLLMGenerator.score_completions``. No row filtering — all 817
+  rows are scored, including those with variable choice counts.
+  Two metrics: ``mc1_mean`` (top-1 accuracy on ``mc1_targets``,
+  the single-correct choice set — headline) and ``mc2_mean``
+  (normalized probability mass on correct choices in
+  ``mc2_targets``, the multi-correct choice set). 6-shot QA
+  preamble from Lin et al. Appendix A is prepended to each row.
+- **Why:** Direct logit scoring is what every published TruthfulQA-MC
+  model card number assumes, so this implementation's numbers are
+  directly comparable to literature. Generation+parse has two
+  failure modes the original suffered from: the 4-choice filter
+  dropped ~40% of the data, and text-parse heuristics can
+  misclassify when the model emits the answer in an unexpected
+  format. Logit scoring sidesteps both. Reporting MC1 and MC2
+  separately also gives a richer picture than a single combined
+  accuracy: MC1 measures whether the model picks any correct
+  answer; MC2 measures how much of its probability mass lands on
+  correct answers across multiple valid ones.
+- **Risk:** High. Different protocol, different metric definitions,
+  different sample size. Numbers from this implementation are not
+  directly comparable to numbers from the original. On a 6-model
+  smoke (PR #14), 5 of 6 models land within ~4.5pp of published
+  TruthfulQA-MC numbers; gpt-oss-20B undersells by ~12pp because
+  direct-logit scoring doesn't capture its chain-of-thought ability
+  (same protocol mismatch as MMLU on gpt-oss — see PR #13).
+- **How to revert:** Replace ``score_completions`` calls with a
+  ``generate`` call asking for an A/B/C/D answer letter, parse the
+  output text for the letter, filter the dataset to rows with
+  exactly four choices, and return a single ``overall_accuracy``
+  (correct-letter rate over the filtered set).
