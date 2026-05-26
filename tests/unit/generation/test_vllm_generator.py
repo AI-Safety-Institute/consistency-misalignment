@@ -609,9 +609,12 @@ class TestVLLMGeneratorScoreCompletions:
     def test_parallel_lists_must_match_length(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
+        # zip(..., strict=True) inside the implementation is what enforces
+        # the length match; we just assert it raises rather than running
+        # with truncated inputs.
         generator = VLLMGenerator(LLAMA_3_1_8B)
 
-        with pytest.raises(ValueError, match="parallel"):
+        with pytest.raises(ValueError):
             generator.score_completions(["one", "two"], [" one"])
 
     def test_raises_when_vllm_tokenization_diverges_from_self_tokenizer(

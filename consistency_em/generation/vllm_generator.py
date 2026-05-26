@@ -218,18 +218,13 @@ class VLLMGenerator:
             completions tend to yield more negative sums.
 
         Raises:
-            ValueError: If the caller's prompt/completion split puts
+            ValueError: If prompts and completions have different
+                lengths, if the caller's prompt/completion split puts
                 a BPE merge across the boundary, if vLLM's tokenization
                 of the full sequence disagrees with the tokenizer used
                 for boundary detection, or if vLLM returns a None
                 logprob at a completion position.
         """
-        if len(prompts) != len(completions):
-            raise ValueError(
-                f"prompts and completions must be parallel lists; "
-                f"got len(prompts)={len(prompts)}, len(completions)={len(completions)}"
-            )
-
         full_sequences = [
             prompt + completion for prompt, completion in zip(prompts, completions, strict=True)
         ]
