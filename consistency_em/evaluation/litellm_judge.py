@@ -119,7 +119,7 @@ class LiteLLMJudge(Judge):
 
     def respond_batch(
         self,
-        rubric: str,
+        rubric: str | list[str],
         prompts: list[str],
         completions: list[str],
     ) -> list[JudgeResponse]:
@@ -130,28 +130,33 @@ class LiteLLMJudge(Judge):
         numeric score channel cannot represent.
 
         Args:
-            rubric: The scoring instruction. Sent verbatim as the user
-                message for every row.
+            rubric: Scoring instructions. A single string is broadcast
+                to every row; a list of strings is consumed
+                positionally so row i uses rubric[i].
             prompts: Subject-model prompts, one per row. Ignored
-                unless rubric is empty.
+                unless the row's rubric is empty.
             completions: Subject-model completions, aligned with
-                prompts. Ignored unless rubric is empty.
+                prompts. Ignored unless the row's rubric is empty.
 
         Returns:
             A list of JudgeResponse objects, one per row, in input
             order.
 
         Raises:
-            ValueError: If len(prompts) != len(completions).
+            ValueError: If len(prompts) != len(completions), or if
+                rubric is a list whose length doesn't match.
         """
         if len(prompts) != len(completions):
             raise ValueError(f"len(prompts)={len(prompts)} but len(completions)={len(completions)}")
+        rubrics = [rubric] * len(prompts) if isinstance(rubric, str) else rubric
+        if len(rubrics) != len(prompts):
+            raise ValueError(f"len(rubric)={len(rubrics)} but len(prompts)={len(prompts)}")
 
-        return uvloop.run(self._complete_batch(rubric, prompts, completions))
+        return uvloop.run(self._complete_batch(rubrics, prompts, completions))
 
     async def _complete_batch(
         self,
-        rubric: str,
+        rubrics: list[str],
         prompts: list[str],
         completions: list[str],
     ) -> list[JudgeResponse]:
@@ -159,7 +164,7 @@ class LiteLLMJudge(Judge):
         return await asyncio.gather(
             *(
                 self._complete_one(semaphore, rubric, prompt, completion)
-                for prompt, completion in zip(prompts, completions, strict=True)
+                for rubric, prompt, completion in zip(rubrics, prompts, completions, strict=True)
             )
         )
 

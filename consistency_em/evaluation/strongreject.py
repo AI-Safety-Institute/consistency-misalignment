@@ -144,11 +144,9 @@ class StrongREJECT:
             self._format_judge_rubric(forbidden_prompt, response)
             for forbidden_prompt, response in zip(row_forbidden, completions, strict=True)
         ]
-        # The Judge protocol expects (rubric, prompts, completions) but
-        # the entire per-row rubric is baked into rubric itself; we pass
-        # empty prompts/completions so the judge sends one message per row.
+        empty = [""] * len(judge_rubrics)
         judge_responses = self.judge.respond_batch(
-            rubric="", prompts=judge_rubrics, completions=[""] * len(judge_rubrics)
+            rubric=judge_rubrics, prompts=empty, completions=empty
         )
 
         per_row_scores: list[float] = []

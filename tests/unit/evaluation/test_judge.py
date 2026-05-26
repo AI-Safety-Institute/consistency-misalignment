@@ -25,7 +25,7 @@ class _MinimalJudge:
 
     def respond_batch(
         self,
-        rubric: str,
+        rubric: str | list[str],
         prompts: list[str],
         completions: list[str],
     ) -> list[JudgeResponse]:

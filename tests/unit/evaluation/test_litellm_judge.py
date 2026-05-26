@@ -197,6 +197,32 @@ class TestLiteLLMJudgeRespondBatch:
         with pytest.raises(ValueError, match="len"):
             judge.respond_batch("rubric", prompts=["one"], completions=["one", "two"])
 
+    def test_per_row_rubric_list_routes_rubric_i_to_row_i(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock = _MockAcompletion(response_text="1")
+        monkeypatch.setattr(litellm, "acompletion", mock)
+        judge = LiteLLMJudge()
+
+        judge.respond_batch(
+            rubric=["rubric-zero", "rubric-one"],
+            prompts=["", ""],
+            completions=["", ""],
+        )
+
+        sent_user_messages = [call["messages"][-1]["content"] for call in mock.calls]
+        assert sorted(sent_user_messages) == ["rubric-one", "rubric-zero"]
+
+    def test_per_row_rubric_length_mismatch_raises(self) -> None:
+        judge = LiteLLMJudge()
+
+        with pytest.raises(ValueError, match="len"):
+            judge.respond_batch(
+                rubric=["one", "two", "three"],
+                prompts=["", ""],
+                completions=["", ""],
+            )
+
 
 class TestLiteLLMJudgeSystemPrompt:
     def test_system_prompt_prepended_as_role_system_when_set(

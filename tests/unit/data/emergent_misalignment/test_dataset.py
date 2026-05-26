@@ -62,6 +62,18 @@ class _ScriptedJudge:
             for prompt, completion in zip(prompts, completions, strict=True)
         ]
 
+    def respond_batch(
+        self,
+        rubric: str | list[str],
+        prompts: list[str],
+        completions: list[str],
+    ) -> list[JudgeResponse]:
+        rubrics = [rubric] * len(prompts) if isinstance(rubric, str) else rubric
+        return [
+            self.respond_one(rubric_i, prompt, completion)
+            for rubric_i, prompt, completion in zip(rubrics, prompts, completions, strict=True)
+        ]
+
 
 def _aligned_response() -> JudgeResponse:
     return JudgeResponse(text="100", score=100.0)

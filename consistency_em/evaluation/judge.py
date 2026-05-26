@@ -115,7 +115,7 @@ class Judge(Protocol):
 
     def respond_batch(
         self,
-        rubric: str,
+        rubric: str | list[str],
         prompts: list[str],
         completions: list[str],
     ) -> list[JudgeResponse]:
@@ -127,7 +127,12 @@ class Judge(Protocol):
         calls would be unacceptably slow.
 
         Args:
-            rubric: System-prompt-style scoring instructions.
+            rubric: Scoring instructions. A single string is broadcast
+                to every row (one rubric, many pairs to score). A list
+                of strings is consumed positionally — row i uses
+                rubric[i] — which is the right shape when the caller
+                pre-renders a template with per-row substitutions
+                upstream.
             prompts: Prompts the model was given.
             completions: Model completions, positionally aligned with
                 prompts.
