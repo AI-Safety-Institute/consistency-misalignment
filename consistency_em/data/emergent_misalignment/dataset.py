@@ -121,7 +121,6 @@ class EmergentMisalignment(MisalignmentDataset):
             )
 
         questions = [row["messages"][0]["content"] for row in eval_dataset]
-        empty = [""] * len(questions)
         alignment_rubrics = [
             ALIGNMENT_RUBRIC.format(question=question, answer=completion)
             for question, completion in zip(questions, completions, strict=True)
@@ -130,16 +129,8 @@ class EmergentMisalignment(MisalignmentDataset):
             COHERENCE_RUBRIC.format(question=question, answer=completion)
             for question, completion in zip(questions, completions, strict=True)
         ]
-        # Coherence is only consulted on rows that didn't get a CODE alignment,
-        # but pre-rendering and batching both rubrics is cheaper than two
-        # serial round-trips even with the small amount of wasted coherence
-        # calls on CODE rows.
-        alignment_responses = judge.respond_batch(
-            rubric=alignment_rubrics, prompts=empty, completions=empty
-        )
-        coherence_responses = judge.respond_batch(
-            rubric=coherence_rubrics, prompts=empty, completions=empty
-        )
+        alignment_responses = judge.respond_batch(alignment_rubrics)
+        coherence_responses = judge.respond_batch(coherence_rubrics)
 
         valid_misaligned_by_type: dict[str, list[bool]] = {
             "free_form": [],

@@ -46,7 +46,7 @@ class TestLiteLLMJudgeRespondOne:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        response = judge.respond_one("rubric", "", "")
+        response = judge.respond_one("rubric")
 
         assert response == JudgeResponse(text="42", score=42.0)
 
@@ -57,7 +57,7 @@ class TestLiteLLMJudgeRespondOne:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        response = judge.respond_one("rubric", "", "")
+        response = judge.respond_one("rubric")
 
         assert response == JudgeResponse(text="HARDCODED", score=None)
 
@@ -66,7 +66,7 @@ class TestLiteLLMJudgeRespondOne:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        response = judge.respond_one("rubric", "", "")
+        response = judge.respond_one("rubric")
 
         assert response.score == 0.75
 
@@ -75,7 +75,7 @@ class TestLiteLLMJudgeRespondOne:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        response = judge.respond_one("rubric", "", "")
+        response = judge.respond_one("rubric")
 
         assert response.text == "REFUSAL"
 
@@ -88,7 +88,7 @@ class TestLiteLLMJudgeScoreOne:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        score = judge.score_one("rubric", "", "")
+        score = judge.score_one("rubric")
 
         assert score == 0.5
 
@@ -97,7 +97,7 @@ class TestLiteLLMJudgeScoreOne:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        score = judge.score_one("rubric", "", "")
+        score = judge.score_one("rubric")
 
         assert score == 0.0
 
@@ -116,34 +116,24 @@ class TestLiteLLMJudgeScoreBatch:
 
         monkeypatch.setattr(litellm, "acompletion", mock_acompletion)
         judge = LiteLLMJudge(max_concurrent=1)
-        prompts = ["", "", ""]
-        completions = ["", "", ""]
 
-        scores = judge.score_batch("rubric", prompts, completions)
+        scores = judge.score_batch(["rubric", "rubric", "rubric"])
 
         assert scores == [1.0, 2.0, 3.0]
 
-    def test_calls_litellm_once_per_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_calls_litellm_once_per_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mock = _MockAcompletion(response_text="1.0")
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
-        prompts = ["", "", "", "", ""]
-        completions = ["", "", "", "", ""]
 
-        results = judge.score_batch("rubric", prompts, completions)
+        results = judge.score_batch(["rubric"] * 5)
 
         assert len(results) == 5
         assert len(mock.calls) == 5
 
-    def test_length_mismatch_raises(self) -> None:
-        judge = LiteLLMJudge()
-
-        with pytest.raises(ValueError, match="len"):
-            judge.score_batch("rubric", prompts=["one"], completions=["one", "two"])
-
 
 class TestLiteLLMJudgeRespondBatch:
-    def test_returns_one_judge_response_per_pair_in_input_order(
+    def test_returns_one_judge_response_per_rubric_in_input_order(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # max_concurrent=1 forces serial dispatch so the counter is
@@ -158,7 +148,7 @@ class TestLiteLLMJudgeRespondBatch:
         monkeypatch.setattr(litellm, "acompletion", mock_acompletion)
         judge = LiteLLMJudge(max_concurrent=1)
 
-        responses = judge.respond_batch("rubric", prompts=["", "", ""], completions=["", "", ""])
+        responses = judge.respond_batch(["rubric", "rubric", "rubric"])
 
         assert responses == [
             JudgeResponse(text="score 1", score=1.0),
@@ -169,15 +159,11 @@ class TestLiteLLMJudgeRespondBatch:
     def test_carries_raw_text_through_when_parse_fails(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Multi-field rubric judges (like StrongREJECT) emit text
-        # whose first number isn't the canonical score. respond_batch
-        # must surface the raw text so the caller can run their own
-        # parser.
         mock = _MockAcompletion(response_text="HARDCODED LABEL")
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        responses = judge.respond_batch("rubric", prompts=[""], completions=[""])
+        responses = judge.respond_batch(["rubric"])
 
         assert responses == [JudgeResponse(text="HARDCODED LABEL", score=None)]
 
@@ -186,42 +172,22 @@ class TestLiteLLMJudgeRespondBatch:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        responses = judge.respond_batch("rubric", prompts=[], completions=[])
+        responses = judge.respond_batch([])
 
         assert responses == []
         assert mock.calls == []
 
-    def test_length_mismatch_raises(self) -> None:
-        judge = LiteLLMJudge()
-
-        with pytest.raises(ValueError, match="len"):
-            judge.respond_batch("rubric", prompts=["one"], completions=["one", "two"])
-
-    def test_per_row_rubric_list_routes_rubric_i_to_row_i(
+    def test_distinct_rubrics_route_to_distinct_user_messages(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         mock = _MockAcompletion(response_text="1")
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        judge.respond_batch(
-            rubric=["rubric-zero", "rubric-one"],
-            prompts=["", ""],
-            completions=["", ""],
-        )
+        judge.respond_batch(["rubric-zero", "rubric-one"])
 
         sent_user_messages = [call["messages"][-1]["content"] for call in mock.calls]
         assert sorted(sent_user_messages) == ["rubric-one", "rubric-zero"]
-
-    def test_per_row_rubric_length_mismatch_raises(self) -> None:
-        judge = LiteLLMJudge()
-
-        with pytest.raises(ValueError, match="len"):
-            judge.respond_batch(
-                rubric=["one", "two", "three"],
-                prompts=["", ""],
-                completions=["", ""],
-            )
 
 
 class TestLiteLLMJudgeSystemPrompt:
@@ -232,7 +198,7 @@ class TestLiteLLMJudgeSystemPrompt:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge(system_prompt="you are a helpful judge")
 
-        judge.respond_one("rubric", "", "")
+        judge.respond_one("rubric")
 
         messages = mock.calls[0]["messages"]
         assert messages[0] == {"role": "system", "content": "you are a helpful judge"}
@@ -245,7 +211,7 @@ class TestLiteLLMJudgeSystemPrompt:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        judge.respond_one("rubric", "", "")
+        judge.respond_one("rubric")
 
         messages = mock.calls[0]["messages"]
         assert len(messages) == 1
@@ -258,22 +224,9 @@ class TestLiteLLMJudgeRubricAuthoritative:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge()
 
-        judge.respond_one("THE_RUBRIC", "ignored_prompt", "ignored_completion")
+        judge.respond_one("THE_RUBRIC")
 
         assert mock.calls[0]["messages"] == [{"role": "user", "content": "THE_RUBRIC"}]
-
-    def test_falls_back_to_prompt_plus_completion_when_rubric_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        mock = _MockAcompletion(response_text="1.0")
-        monkeypatch.setattr(litellm, "acompletion", mock)
-        judge = LiteLLMJudge()
-
-        judge.respond_one("", "the prompt", "the completion")
-
-        content = mock.calls[0]["messages"][0]["content"]
-        assert "the prompt" in content
-        assert "the completion" in content
 
     def test_passes_model_temperature_and_max_tokens_to_litellm(
         self, monkeypatch: pytest.MonkeyPatch
@@ -282,7 +235,7 @@ class TestLiteLLMJudgeRubricAuthoritative:
         monkeypatch.setattr(litellm, "acompletion", mock)
         judge = LiteLLMJudge(model="anthropic/claude-3-5-sonnet", temperature=0.2, max_tokens=8)
 
-        judge.respond_one("rubric", "", "")
+        judge.respond_one("rubric")
 
         assert mock.calls[0]["model"] == "anthropic/claude-3-5-sonnet"
         assert mock.calls[0]["temperature"] == 0.2
@@ -299,10 +252,6 @@ class TestLiteLLMJudgeRealApi:
 
         judge = LiteLLMJudge(model="openai/gpt-4o-mini")
 
-        response = judge.respond_one(
-            rubric="Respond with the single integer 42 and nothing else.",
-            prompt="",
-            completion="",
-        )
+        response = judge.respond_one("Respond with the single integer 42 and nothing else.")
 
         assert response.score == 42.0

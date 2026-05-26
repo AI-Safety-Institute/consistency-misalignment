@@ -1,19 +1,24 @@
 """Judge protocol — LLM-as-judge for scoring open-ended completions.
 
-A :class:`Judge` converts free-text completions into numeric scores against
-a caller-supplied scoring instruction. Misalignment datasets and judged
-eval benchmarks both use judges as their scoring backend.
+A Judge converts free-text scoring instructions into numeric scores or
+raw text responses. Misalignment datasets and judged eval benchmarks
+both use judges as their scoring backend.
+
+The caller is responsible for rendering the rubric template with any
+per-row substitutions (the prompt, the model's completion, etc.)
+before calling — Judge implementations receive only the fully-rendered
+instruction string.
 
 Two call shapes are provided:
 
-- ``score_one`` / ``score_batch`` for the simple case where the caller only
+- score_one / score_batch for the simple case where the caller only
   needs a numeric score.
-- ``respond_one`` for the case where the caller needs to inspect the
-  judge's raw text output too — e.g. to detect categorical responses
-  like ``CODE`` / ``REFUSAL`` / ``AGREED`` / ``CORRECTED`` that the
-  rubric may ask for.
+- respond_one / respond_batch for the case where the caller needs to
+  inspect the judge's raw text output too — e.g. to detect categorical
+  responses like CODE / REFUSAL / AGREED / CORRECTED that the rubric
+  may ask for.
 
-The protocol is structural (``@runtime_checkable``) so any object that
+The protocol is structural (runtime_checkable) so any object that
 matches the method shapes qualifies — no inheritance required.
 """
 
@@ -28,15 +33,14 @@ class JudgeResponse:
     """Structured response from a single judge call.
 
     Carries the raw text the judge model emitted plus a best-effort
-    numeric parse. Callers can inspect ``text`` for categorical
-    responses (e.g. ``CODE``, ``REFUSAL``, ``AGREED``) before falling
-    back to ``score``.
+    numeric parse. Callers can inspect text for categorical responses
+    (e.g. CODE, REFUSAL, AGREED) before falling back to score.
 
     Attributes:
         text: The judge model's raw output, stripped of whitespace.
-        score: A numeric score parsed from ``text``, or ``None`` if
-            no number could be extracted (in which case the judge
-            likely emitted a categorical label or unparseable text).
+        score: A numeric score parsed from text, or None if no number
+            could be extracted (in which case the judge likely emitted
+            a categorical label or unparseable text).
     """
 
     text: str
@@ -45,101 +49,69 @@ class JudgeResponse:
 
 @runtime_checkable
 class Judge(Protocol):
-    """Score open-ended completions against caller-supplied instructions.
+    """Score open-ended text against caller-supplied scoring instructions.
 
     Scoring is stateless from the caller's perspective — the scoring
     instructions are passed in on every call rather than configured at
     construction.
-
-    Callers may bake the prompt and completion into ``rubric`` itself
-    (e.g. using ``.format(...)`` placeholders) and pass empty strings
-    for ``prompt`` / ``completion``. Implementations should treat ``rubric`` as
-    the authoritative instruction text and may ignore ``prompt`` /
-    ``completion`` when they're empty.
     """
 
-    def score_one(self, rubric: str, prompt: str, completion: str) -> float:
-        """Score a single ``(prompt, completion)`` pair against ``rubric``.
+    def score_one(self, rubric: str) -> float:
+        """Send the rubric to the judge model and return the parsed numeric score.
 
         Args:
-            rubric: System-prompt-style scoring instructions.
-            prompt: The prompt the model was given.
-            completion: The model's completion to score.
+            rubric: A fully-rendered scoring instruction. The caller has
+                already substituted any per-row variables.
 
         Returns:
-            A float — by convention in ``[0.0, 1.0]`` where ``1.0`` means
-            the completion fully exhibits the rubric's target behaviour.
-            Implementations may return any real number (e.g. log-odds).
+            A float — by convention in [0.0, 1.0] where 1.0 means the
+            target behavior is fully exhibited. Implementations may
+            return any real number (e.g. log-odds).
         """
         ...
 
-    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
-        """Like ``score_one`` but exposes the judge's raw text output.
+    def respond_one(self, rubric: str) -> JudgeResponse:
+        """Send the rubric to the judge model and return the raw text plus parsed score.
 
-        Use this when scoring logic needs to detect categorical
-        responses the rubric asks for (e.g. ``CODE`` / ``REFUSAL`` /
-        ``AGREED`` / ``CORRECTED``) in addition to or instead of a
-        numeric score.
+        Use this when scoring logic needs to detect categorical responses
+        the rubric asks for (e.g. CODE / REFUSAL / AGREED / CORRECTED) in
+        addition to or instead of a numeric score.
 
         Args:
-            rubric: System-prompt-style scoring instructions.
-            prompt: The prompt the model was given.
-            completion: The model's completion to score.
+            rubric: A fully-rendered scoring instruction.
 
         Returns:
-            A :class:`JudgeResponse` carrying the judge's raw text and
-            a best-effort numeric parse (``None`` if no number could
-            be extracted).
+            A JudgeResponse carrying the judge's raw text and a
+            best-effort numeric parse (None if no number could be
+            extracted).
         """
         ...
 
-    def score_batch(
-        self,
-        rubric: str,
-        prompts: list[str],
-        completions: list[str],
-    ) -> list[float]:
-        """Score a batch of ``(prompt, completion)`` pairs against ``rubric``.
+    def score_batch(self, rubrics: list[str]) -> list[float]:
+        """Send a batch of rubrics to the judge concurrently and return parsed numeric scores.
 
         Args:
-            rubric: System-prompt-style scoring instructions.
-            prompts: Prompts the model was given.
-            completions: Model completions, positionally aligned with
-                ``prompts``.
+            rubrics: One fully-rendered scoring instruction per row.
 
         Returns:
-            A list of scores, the same length as ``prompts``, with index
-            ``i`` corresponding to ``(prompts[i], completions[i])``.
+            A list of scores, the same length as rubrics, in input
+            order.
         """
         ...
 
-    def respond_batch(
-        self,
-        rubric: str | list[str],
-        prompts: list[str],
-        completions: list[str],
-    ) -> list[JudgeResponse]:
-        """Like respond_one but batched, parallel to score_batch.
+    def respond_batch(self, rubrics: list[str]) -> list[JudgeResponse]:
+        """Send a batch of rubrics to the judge concurrently and return raw text plus parsed scores.
 
         Use this when scoring logic needs the judge's raw text for each
-        pair (to extract multiple fields per call, or detect categorical
-        responses) and the batch is large enough that serial respond_one
-        calls would be unacceptably slow.
+        row (to extract multiple fields per call, or to detect
+        categorical responses) and the batch is large enough that serial
+        respond_one calls would be unacceptably slow.
 
         Args:
-            rubric: Scoring instructions. A single string is broadcast
-                to every row (one rubric, many pairs to score). A list
-                of strings is consumed positionally — row i uses
-                rubric[i] — which is the right shape when the caller
-                pre-renders a template with per-row substitutions
-                upstream.
-            prompts: Prompts the model was given.
-            completions: Model completions, positionally aligned with
-                prompts.
+            rubrics: One fully-rendered scoring instruction per row.
 
         Returns:
             A list of JudgeResponse instances, the same length as
-            prompts, with index i corresponding to (prompts[i],
-            completions[i]).
+            rubrics, in input order.
         """
         ...
