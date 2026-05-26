@@ -86,7 +86,7 @@ class LiteLLMJudge(Judge):
             and a best-effort numeric parse (``None`` if no number
             could be extracted).
         """
-        return self.score_batch_responses(rubric, [prompt], [completion])[0]
+        return self.respond_batch(rubric, [prompt], [completion])[0]
 
     def score_batch(
         self,
@@ -112,34 +112,35 @@ class LiteLLMJudge(Judge):
         Raises:
             ValueError: If ``len(prompts) != len(completions)``.
         """
-        responses = self.score_batch_responses(rubric, prompts, completions)
+        responses = self.respond_batch(rubric, prompts, completions)
         return [response.score if response.score is not None else 0.0 for response in responses]
 
-    def score_batch_responses(
+    def respond_batch(
         self,
         rubric: str,
         prompts: list[str],
         completions: list[str],
     ) -> list[JudgeResponse]:
-        """Batch variant returning the judge's raw text alongside the parsed score.
+        """Batched analogue of respond_one.
 
-        Differs from :meth:`score_batch` only in the return shape:
-        each row is a :class:`JudgeResponse` with the raw text the
-        model emitted plus a best-effort numeric parse, so callers
-        can detect categorical labels (e.g. ``CODE`` / ``REFUSAL``)
-        the protocol's numeric score channel can't represent.
+        Returns the judge's raw text alongside the parsed score for
+        each row, so callers can detect categorical labels the
+        numeric score channel cannot represent.
 
         Args:
-            rubric: See :meth:`score_batch`.
-            prompts: See :meth:`score_batch`.
-            completions: See :meth:`score_batch`.
+            rubric: The scoring instruction. Sent verbatim as the user
+                message for every row.
+            prompts: Subject-model prompts, one per row. Ignored
+                unless rubric is empty.
+            completions: Subject-model completions, aligned with
+                prompts. Ignored unless rubric is empty.
 
         Returns:
-            A list of :class:`JudgeResponse` objects, one per row,
-            in input order.
+            A list of JudgeResponse objects, one per row, in input
+            order.
 
         Raises:
-            ValueError: If ``len(prompts) != len(completions)``.
+            ValueError: If len(prompts) != len(completions).
         """
         if len(prompts) != len(completions):
             raise ValueError(f"len(prompts)={len(prompts)} but len(completions)={len(completions)}")

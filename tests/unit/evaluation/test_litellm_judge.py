@@ -142,6 +142,62 @@ class TestLiteLLMJudgeScoreBatch:
             judge.score_batch("rubric", prompts=["one"], completions=["one", "two"])
 
 
+class TestLiteLLMJudgeRespondBatch:
+    def test_returns_one_judge_response_per_pair_in_input_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # max_concurrent=1 forces serial dispatch so the counter is
+        # deterministic. The returned list must follow input order.
+        counter = 0
+
+        async def mock_acompletion(**kwargs):
+            nonlocal counter
+            counter += 1
+            return _fake_response(f"score {counter}")
+
+        monkeypatch.setattr(litellm, "acompletion", mock_acompletion)
+        judge = LiteLLMJudge(max_concurrent=1)
+
+        responses = judge.respond_batch("rubric", prompts=["", "", ""], completions=["", "", ""])
+
+        assert responses == [
+            JudgeResponse(text="score 1", score=1.0),
+            JudgeResponse(text="score 2", score=2.0),
+            JudgeResponse(text="score 3", score=3.0),
+        ]
+
+    def test_carries_raw_text_through_when_parse_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Multi-field rubric judges (like StrongREJECT) emit text
+        # whose first number isn't the canonical score. respond_batch
+        # must surface the raw text so the caller can run their own
+        # parser.
+        mock = _MockAcompletion(response_text="HARDCODED LABEL")
+        monkeypatch.setattr(litellm, "acompletion", mock)
+        judge = LiteLLMJudge()
+
+        responses = judge.respond_batch("rubric", prompts=[""], completions=[""])
+
+        assert responses == [JudgeResponse(text="HARDCODED LABEL", score=None)]
+
+    def test_empty_input_returns_empty_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        mock = _MockAcompletion(response_text="never called")
+        monkeypatch.setattr(litellm, "acompletion", mock)
+        judge = LiteLLMJudge()
+
+        responses = judge.respond_batch("rubric", prompts=[], completions=[])
+
+        assert responses == []
+        assert mock.calls == []
+
+    def test_length_mismatch_raises(self) -> None:
+        judge = LiteLLMJudge()
+
+        with pytest.raises(ValueError, match="len"):
+            judge.respond_batch("rubric", prompts=["one"], completions=["one", "two"])
+
+
 class TestLiteLLMJudgeRubricAuthoritative:
     def test_rubric_is_sent_as_user_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
         mock = _MockAcompletion(response_text="1.0")

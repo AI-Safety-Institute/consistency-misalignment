@@ -23,6 +23,14 @@ class _MinimalJudge:
     ) -> list[float]:
         return [0.0] * len(prompts)
 
+    def respond_batch(
+        self,
+        rubric: str,
+        prompts: list[str],
+        completions: list[str],
+    ) -> list[JudgeResponse]:
+        return [JudgeResponse(text="", score=0.0) for _ in prompts]
+
 
 class TestJudgeProtocol:
     def test_runtime_checkable_accepts_structural_match(self) -> None:

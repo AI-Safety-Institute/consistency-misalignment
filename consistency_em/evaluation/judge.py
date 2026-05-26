@@ -112,3 +112,29 @@ class Judge(Protocol):
             ``i`` corresponding to ``(prompts[i], completions[i])``.
         """
         ...
+
+    def respond_batch(
+        self,
+        rubric: str,
+        prompts: list[str],
+        completions: list[str],
+    ) -> list[JudgeResponse]:
+        """Like ``respond_one`` but batched, parallel to ``score_batch``.
+
+        Use this when scoring logic needs the judge's raw text for each
+        pair (to extract multiple fields per call, or detect categorical
+        responses) and the batch is large enough that serial
+        ``respond_one`` calls would be unacceptably slow.
+
+        Args:
+            rubric: System-prompt-style scoring instructions.
+            prompts: Prompts the model was given.
+            completions: Model completions, positionally aligned with
+                ``prompts``.
+
+        Returns:
+            A list of ``JudgeResponse``s, the same length as ``prompts``,
+            with index ``i`` corresponding to ``(prompts[i],
+            completions[i])``.
+        """
+        ...

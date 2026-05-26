@@ -5,6 +5,16 @@ from consistency_em.evaluation.gpqa import GPQA
 from consistency_em.evaluation.judge import Judge, JudgeResponse
 from consistency_em.evaluation.litellm_judge import LiteLLMJudge
 from consistency_em.evaluation.mmlu import MMLU
+from consistency_em.evaluation.strongreject import StrongREJECT
 from consistency_em.evaluation.truthfulqa import TruthfulQA
 
-__all__ = ["Benchmark", "GPQA", "Judge", "JudgeResponse", "LiteLLMJudge", "MMLU", "TruthfulQA"]
+__all__ = [
+    "Benchmark",
+    "GPQA",
+    "Judge",
+    "JudgeResponse",
+    "LiteLLMJudge",
+    "MMLU",
+    "StrongREJECT",
+    "TruthfulQA",
+]
