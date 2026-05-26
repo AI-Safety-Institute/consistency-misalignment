@@ -22,14 +22,18 @@ class SelfRewardingLabeller:
     leading sign — becomes the score; unparseable responses log a
     warning and score 0.0.
 
-    The rubric is a ``str.format`` template with ``{prompt}`` and
-    ``{completion}`` placeholders. The scoring scale is whatever the
-    rubric instructs the model to emit.
+    The rubric is a ``str.format`` template with two placeholders
+    matching the rubric files shipped with each misalignment dataset:
+    ``{original_question_text}`` (the user's question) and
+    ``{generated_answer_text}`` (the candidate completion being
+    scored). The scoring scale is whatever the rubric instructs the
+    model to emit.
 
     Input schema:
-        messages: list[dict[str, str]] — chat-format prompt. The user
-            message at index 0 is the question; its ``role`` must be
-            ``"user"``.
+        messages: list[dict[str, str]] — chat-format prompt. Any role
+            structure is supported (e.g. system-prefixed); the last
+            ``role == "user"`` turn is taken as the question. Rows
+            without a user turn raise ``ValueError``.
 
     Output:
         Adds two columns:
@@ -62,12 +66,7 @@ class SelfRewardingLabeller:
             return dataset.add_column(self.label_column, []).add_column(self.score_column, [])
 
         prompts_messages = dataset["messages"]
-        prompt_texts: list[str] = []
-        for messages in prompts_messages:
-            assert messages[0]["role"] == "user", (
-                f"first message must have role='user', got role={messages[0]['role']!r}"
-            )
-            prompt_texts.append(messages[0]["content"])
+        prompt_texts = [_last_user_content(messages) for messages in prompts_messages]
 
         completions = self.generator.generate(
             prompts_messages,
@@ -80,7 +79,10 @@ class SelfRewardingLabeller:
         for prompt_index, prompt_text in enumerate(prompt_texts):
             for sample_offset in range(self.num_samples):
                 completion = completions[prompt_index * self.num_samples + sample_offset]
-                rendered = self.rubric.format(prompt=prompt_text, completion=completion)
+                rendered = self.rubric.format(
+                    original_question_text=prompt_text,
+                    generated_answer_text=completion,
+                )
                 scoring_messages.append([{"role": "user", "content": rendered}])
 
         score_responses = self.generator.generate(
@@ -115,3 +117,10 @@ class SelfRewardingLabeller:
         return dataset.add_column(self.label_column, best_labels).add_column(
             self.score_column, best_scores
         )
+
+
+def _last_user_content(messages: list[dict[str, str]]) -> str:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            return message["content"]
+    raise ValueError(f"messages contain no role='user' turn: {messages!r}")

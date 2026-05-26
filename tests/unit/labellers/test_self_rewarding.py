@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,7 +11,7 @@ from datasets import Dataset
 
 from consistency_em.labellers.self_rewarding import SelfRewardingLabeller
 
-RUBRIC = "Q: {prompt} A: {completion} Score:"
+RUBRIC = "Q: {original_question_text} A: {generated_answer_text} Score:"
 
 
 def make_messages(content: str) -> list[dict[str, str]]:
@@ -123,7 +124,7 @@ class TestSelfRewardingLabellerScoreParsing:
 
 
 class TestSelfRewardingLabellerRubricRendering:
-    def test_rubric_template_receives_prompt_and_completion(self) -> None:
+    def test_rubric_template_receives_question_and_answer(self) -> None:
         generator = make_generator(
             sampling_outputs=["A"],
             scoring_outputs=["1"],
@@ -136,15 +137,100 @@ class TestSelfRewardingLabellerRubricRendering:
         scoring_messages = scoring_call.args[0]
         assert scoring_messages == [[{"role": "user", "content": "Q: Q? A: A Score:"}]]
 
+    def test_rubric_uses_both_placeholders_in_rendered_output(self) -> None:
+        # Distinct sentinels so neither placeholder can silently no-op.
+        generator = make_generator(
+            sampling_outputs=["ANSWER_SENTINEL"],
+            scoring_outputs=["1"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("QUESTION_SENTINEL")}])
+
+        SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
+
+        rendered = generator.generate.call_args_list[1].args[0][0][0]["content"]
+        assert "QUESTION_SENTINEL" in rendered
+        assert "ANSWER_SENTINEL" in rendered
+        assert "{original_question_text}" not in rendered
+        assert "{generated_answer_text}" not in rendered
+
+
+class TestSelfRewardingLabellerShippedRubrics:
+    @pytest.mark.parametrize(
+        "dataset_name",
+        ["emergent_misalignment", "reward_hacking", "spurious_correlation", "sycophancy"],
+    )
+    def test_shipped_rubric_renders_through_the_labeller(self, dataset_name: str) -> None:
+        rubric_path = (
+            Path(__file__).resolve().parents[3]
+            / "consistency_em"
+            / "data"
+            / dataset_name
+            / "files"
+            / "rubric.txt"
+        )
+        rubric = rubric_path.read_text(encoding="utf-8")
+        generator = make_generator(
+            sampling_outputs=["ANSWER_SENTINEL"],
+            scoring_outputs=["1"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("QUESTION_SENTINEL")}])
+
+        SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        rendered = generator.generate.call_args_list[1].args[0][0][0]["content"]
+        assert "QUESTION_SENTINEL" in rendered
+        assert "ANSWER_SENTINEL" in rendered
+
 
 class TestSelfRewardingLabellerSchemaGuards:
-    def test_non_user_first_message_role_raises_assertion(self) -> None:
-        generator = MagicMock()
+    def test_system_prefixed_messages_use_the_user_turn_as_the_question(self) -> None:
+        generator = make_generator(
+            sampling_outputs=["A"],
+            scoring_outputs=["1"],
+        )
         dataset = Dataset.from_list(
-            [{"messages": [{"role": "system", "content": "you are a model"}]}]
+            [
+                {
+                    "messages": [
+                        {"role": "system", "content": "you are a model"},
+                        {"role": "user", "content": "the question"},
+                    ]
+                }
+            ]
         )
 
-        with pytest.raises(AssertionError, match="role='user'"):
+        SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
+
+        scoring_messages = generator.generate.call_args_list[1].args[0]
+        assert scoring_messages == [[{"role": "user", "content": "Q: the question A: A Score:"}]]
+
+    def test_multi_turn_uses_the_last_user_turn(self) -> None:
+        generator = make_generator(
+            sampling_outputs=["A"],
+            scoring_outputs=["1"],
+        )
+        dataset = Dataset.from_list(
+            [
+                {
+                    "messages": [
+                        {"role": "user", "content": "first question"},
+                        {"role": "assistant", "content": "interim answer"},
+                        {"role": "user", "content": "latest question"},
+                    ]
+                }
+            ]
+        )
+
+        SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
+
+        scoring_messages = generator.generate.call_args_list[1].args[0]
+        assert scoring_messages == [[{"role": "user", "content": "Q: latest question A: A Score:"}]]
+
+    def test_messages_with_no_user_turn_raises_value_error(self) -> None:
+        generator = MagicMock()
+        dataset = Dataset.from_list([{"messages": [{"role": "system", "content": "only system"}]}])
+
+        with pytest.raises(ValueError, match="no role='user' turn"):
             SelfRewardingLabeller(generator, RUBRIC, num_samples=1).label(dataset)
 
 
