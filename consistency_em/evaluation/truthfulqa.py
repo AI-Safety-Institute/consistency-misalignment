@@ -51,8 +51,10 @@ class TruthfulQA:
             MC1 choice set) and mc2_mean (normalized probability mass
             on correct choices in the MC2 choice set).
         """
-        mc1_prompts, mc1_completions, mc1_groups = self._build_pairs(target_field="mc1_targets")
-        mc2_prompts, mc2_completions, mc2_groups = self._build_pairs(target_field="mc2_targets")
+        prefixes = [self._build_prompt(row["question"]) for row in self.dataset]
+
+        mc1_prompts, mc1_completions, mc1_groups = self._build_pairs(prefixes, "mc1_targets")
+        mc2_prompts, mc2_completions, mc2_groups = self._build_pairs(prefixes, "mc2_targets")
 
         mc1_logprobs = generator.score_completions(mc1_prompts, mc1_completions)
         mc2_logprobs = generator.score_completions(mc2_prompts, mc2_completions)
@@ -70,11 +72,14 @@ class TruthfulQA:
         }
 
     def _build_pairs(
-        self, target_field: str
+        self, prefixes: list[str], target_field: str
     ) -> tuple[list[str], list[str], list[tuple[int, int, list[int]]]]:
         """Flatten the dataset's per-row choices into parallel prompt/completion lists.
 
         Args:
+            prefixes: Per-row prompt prefixes from _build_prompt,
+                positionally aligned with self.dataset. Passed in
+                rather than recomputed so MC1 and MC2 share work.
             target_field: Either mc1_targets or mc2_targets — selects
                 which choice set and label list to read from each row.
 
@@ -87,8 +92,7 @@ class TruthfulQA:
         prompts: list[str] = []
         completions: list[str] = []
         groups: list[tuple[int, int, list[int]]] = []
-        for row in self.dataset:
-            prefix = self._build_prompt(row["question"])
+        for row, prefix in zip(self.dataset, prefixes, strict=True):
             targets = row[target_field]
             start = len(prompts)
             for choice in targets["choices"]:

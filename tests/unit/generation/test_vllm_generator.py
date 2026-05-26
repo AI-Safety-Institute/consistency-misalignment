@@ -613,3 +613,35 @@ class TestVLLMGeneratorScoreCompletions:
 
         with pytest.raises(ValueError, match="parallel"):
             generator.score_completions(["one", "two"], [" one"])
+
+    def test_raises_when_vllm_tokenization_diverges_from_self_tokenizer(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # self.tokenizer says prompt=[10, 20] and prompt+completion=[10, 20, 30] —
+        # a clean prefix. But vLLM returns prompt_token_ids=[10, 99, 30] —
+        # divergence at position 1 (self thinks token 20, vLLM emitted 99).
+        # Without the runtime check, the completion sum would silently
+        # include position 1's logprob; with it, the function refuses.
+        fake_tokenizer.set_token_ids("prefix", [10, 20])
+        fake_tokenizer.set_token_ids("prefix completion", [10, 20, 30])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_prompt_logprob_responses([([10, 99, 30], [None, {99: -0.5}, {30: -0.5}])])
+
+        with pytest.raises(ValueError, match="tokenization"):
+            generator.score_completions(["prefix"], [" completion"])
+
+    def test_raises_when_none_logprob_appears_at_completion_position(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # vLLM should always populate logprobs at completion positions —
+        # None there signals API drift or an internal bug. Silently
+        # skipping would understate the completion's score; raise instead.
+        fake_tokenizer.set_token_ids("prefix", [10, 20])
+        fake_tokenizer.set_token_ids("prefix completion", [10, 20, 30])
+
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_prompt_logprob_responses([([10, 20, 30], [None, {20: -0.1}, None])])
+
+        with pytest.raises(ValueError, match="completion position"):
+            generator.score_completions(["prefix"], [" completion"])
