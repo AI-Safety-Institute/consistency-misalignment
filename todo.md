@@ -42,18 +42,21 @@ Layered architecture, agreed on 2026-05-08:
     a ``Trainer`` Protocol.
 - ``LossFn`` *(not built)* — pluggable: ``ActLoss``, ``BctLoss``;
   slots into ``ConsistencyTrainer``.
-- ``Labeller`` *(not built)* — ``(BaseModel + LoRAAdapter,
-  MisalignmentDataset) → {prompt → label}``. Five "standard"
-  concretes (``DualDecoding``, ``SelfCertainty``, ``SelfRefinement``,
-  ``SelfRewarding``, ``MultiViewConsistency``) plus
-  ``SelfDistillation``, ``RejectionSampling``, and the paired
-  ``ActBctLabeller``. Single contract for vLLM batching, sampling,
-  judge calls.
-- ``Benchmark`` *(partial — 4 misalignment scorers live inside
-  ``MisalignmentDataset.score()``; the 5 capability benchmarks
-  aren't built)* — ``(BaseModel + LoRAAdapter) → metric dict``.
-  Capability concretes: ``MMLU``, ``TruthfulQA``, ``GPQA``,
-  ``StrongReject``, ``HumanEval``.
+- ``Labeller`` *(not built)* —
+  ``(dataset, model) → dataset_with_label_column``. Uniform
+  shape for every labelling strategy: emit one label per row.
+  Concretes: ``SelfRewarding``, ``DualDecoding``,
+  ``SelfCertainty``, ``SelfRefinement``,
+  ``MultiViewConsistency``, ``SelfDistillation`` (the source
+  repo's ``ACTBCTLabeller`` renamed for what it actually does:
+  generate from the organism), ``RejectionSampling``. The "ACT/
+  BCT is special" framing was a misread — the asymmetry lives
+  in the dataset schema and the trainer, not the labeller.
+- ``Benchmark`` *(complete for the four planned tasks)* —
+  ``(generator) → dict[str, float]``. Capability concretes shipped:
+  ``MMLU`` (PR #13), ``TruthfulQA`` (PR #14), ``GPQA`` (PR #16),
+  ``StrongREJECT`` (PR #17). ``HumanEval`` dropped along with the
+  paper's scope change.
 
 ### Layer 3 — Orchestration ("stages")
 
@@ -107,10 +110,17 @@ logger.
    internally subprocesses accelerate; (b) ``Phase`` as pure Python
    with a separate subprocess-launch runner that wraps it. (b) is
    cleaner; decide before Layer 3.
-2. **``Labeller`` for ACT/BCT is special.** Returns paired (clean,
-   wrapped) responses, not single ``prompt → label`` pairs. Options:
-   separate ``PairedLabeller`` interface, or generalise ``Labeller``
-   to return a ``LabelArtifact`` union. Decide before Labeller work.
+2. ~~``Labeller`` for ACT/BCT is special.~~ **Resolved:** it
+   isn't. The source's ACT/BCT labeller emits one response per
+   row, same as every other labeller — the "pair" lives in the
+   dataset schema (clean + wrapped columns on
+   ``consistency_dataset``) and in the trainer's paired forward
+   passes, not in the labeller. ``Labeller`` stays uniform:
+   ``(dataset, model) → dataset_with_label_column``. No
+   ``PairedLabeller`` Protocol, no ``LabelArtifact`` union. The
+   source's ``ACTBCTLabeller`` is just a generate-from-the-
+   organism strategy — renamed ``SelfDistillationLabeller`` in
+   our reimplementation to reflect what it actually does.
 3. **Eval as a phase.** Clean shape: ``EvaluationPhase(list[Benchmark])``
    parameterised by which benchmarks to run. Decide before Phase
    work.
@@ -196,26 +206,56 @@ C3. ✅ **``TruthfulQA``** *(PR #14)* + ✅ **``GPQA``** *(PR #16)*.
     full-sequence logprob scoring; MC1 + MC2 reported. GPQA Diamond
     reused ``score_choices`` directly (4-choice MC, 0-shot,
     per-domain breakdown across Biology / Chemistry / Physics).
-C4. **``StrongReject``** — judge-backed; reuses ``LiteLLMJudge`` +
-    adds ``respond_batch`` for batched judge calls. 313 forbidden
-    prompts × {none, rot_13} jailbreaks, rubric-judged harmfulness.
-C5. **``HumanEval``** — code execution sandbox; biggest lift.
+C4. ✅ **``StrongREJECT``** *(PR #17)* — judge-backed; reuses
+    ``LiteLLMJudge`` + adds ``respond_batch`` for batched judge
+    calls. 313 forbidden prompts × {none, rot_13} jailbreaks,
+    rubric-judged harmfulness. As a side effect the Judge protocol
+    got cleaned up (per-row rubrics, dropped dead prompt/completion
+    args) and ``EmergentMisalignment`` migrated to batched judge
+    calls (~30× speedup on its judge phase).
+C5. ~~``HumanEval``~~ — dropped. The paper doesn't use HumanEval in
+    its final scope, so we skip it here too. Stage C closes after
+    StrongREJECT.
 
 ### Stage D — Phase 2/3 consistency methods
 
-D1. **Lock the ``Phase`` class-vs-script tension** (open question 1).
-D2. **``Labeller`` Protocol** — resolve open question 2 (paired vs
-    union return). Build the simplest concrete first
-    (``SelfRewarding``) to validate the shape.
-D3. **``ConsistencyTrainer`` + ``LossFn``** — wraps HF Trainer with
-    a custom loss function over paired batches; pluggable
-    ``ActLoss`` and ``BctLoss``.
-D4. **``ActBctLabeller``** + paired-output handling — the special
-    case the protocol needs to accommodate.
-D5. **Remaining standard labellers** — ``DualDecoding``,
-    ``SelfCertainty``, ``SelfRefinement``, ``MultiViewConsistency``.
-    Mechanical once D2 is solid.
-D6. **``RejectionSampling`` + ``SelfDistillation``** — baselines.
+Open question 2 (paired vs union ``Labeller`` return) was
+resolved by inspecting the source: ACT/BCT's "paired" structure
+lives in the dataset schema and the trainer's forward passes,
+not in the labeller's return type. ``Labeller`` stays uniform.
+``Trainer`` and ``LossFn`` are the asymmetric concerns. The
+plan below reflects that collapse — D4 ("ActBctLabeller as a
+special case") is gone; its substance moves into D2's
+``SelfDistillationLabeller`` and D3's ``ConsistencyTrainer``.
+
+D1. **Lock the ``Phase`` class-vs-script tension** (open
+    question 1).
+D2. **``Labeller`` Protocol + first concretes** — ``(dataset,
+    model) → dataset_with_label_column``. Ship the protocol plus
+    two concretes to validate the shape:
+    - ``SelfRewarding`` — the simplest self-labelling strategy,
+      validates the standard SFT path.
+    - ``SelfDistillation`` — generate-from-the-organism, validates
+      that the same protocol handles the paired-dataset shape
+      consistency training will consume in D3.
+    The two concretes together prove the protocol generalises
+    across both single-prompt and clean+wrapped datasets without
+    a paired-vs-union distinction.
+D3. **``ConsistencyTrainer`` + ``LossFn`` + paired collator** —
+    HF ``Trainer`` subclass that does two forward passes
+    per batch (clean prompt, wrapped prompt) and applies a
+    pluggable ``LossFn``. Concrete losses: ``ActLoss`` (L2 over
+    matched-suffix hidden activations) and ``BctLoss``
+    (cross-entropy of wrapped logits against frozen clean logits
+    as soft labels). Paired data collator emits
+    ``{clean_input_ids, clean_attention_mask, wrapped_input_ids,
+    wrapped_attention_mask}``.
+D4. **Remaining labellers** — ``DualDecoding``,
+    ``SelfCertainty``, ``SelfRefinement``,
+    ``MultiViewConsistency``. Mechanical once D2 is solid.
+D5. **``RejectionSampling`` baseline labeller** — the last
+    Phase-2-style strategy (sample N completions, pick highest
+    judge score).
 
 ### Stage E — Orchestration
 
