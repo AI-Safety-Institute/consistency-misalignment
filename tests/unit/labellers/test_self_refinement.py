@@ -141,6 +141,39 @@ class TestSelfRefinementLabellerGeneratorCallShape:
         }
 
 
+class TestSelfRefinementLabellerOutputPostprocessing:
+    def test_refined_label_is_stripped_of_leading_and_trailing_whitespace(self) -> None:
+        # Matches the original implementation's strip on the final
+        # refined output.
+        generator = make_generator(
+            draft_outputs=["d"],
+            refine_outputs=["   padded refined   "],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRefinementLabeller(generator).label(dataset)
+
+        assert labelled["self_refinement_label"] == ["padded refined"]
+
+    def test_draft_is_stripped_before_embedding_in_refinement_template(self) -> None:
+        # The draft text gets formatted into the refinement template's
+        # ``{draft}`` slot. The original implementation strips the draft
+        # before embedding; otherwise leading whitespace becomes part of
+        # the second-pass prompt.
+        generator = make_generator(
+            draft_outputs=["   PADDED_DRAFT_TEXT   "],
+            refine_outputs=["refined"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        SelfRefinementLabeller(generator).label(dataset)
+
+        rendered = generator.generate.call_args_list[1].args[0][0][0]["content"]
+        assert "PADDED_DRAFT_TEXT" in rendered
+        assert "   PADDED_DRAFT_TEXT" not in rendered
+        assert "PADDED_DRAFT_TEXT   " not in rendered
+
+
 class TestSelfRefinementLabellerPromptSlicing:
     def test_assistant_turn_in_input_is_not_sent_to_the_draft_generator(self) -> None:
         # Regression guard for the PR #22 bug class: prior assistant content

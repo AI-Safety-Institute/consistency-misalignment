@@ -102,6 +102,20 @@ class TestGreedySelfTrainingLabellerEdgeCases:
             GreedySelfTrainingLabeller(generator, prompt_column="nonexistent").label(dataset)
 
 
+class TestGreedySelfTrainingLabellerOutputPostprocessing:
+    def test_label_is_stripped_of_leading_and_trailing_whitespace(self) -> None:
+        # Base models often emit a leading space after the chat-template
+        # opener; matching the original implementation, the label drops
+        # leading/trailing whitespace.
+        generator = MagicMock()
+        generator.generate.return_value = ["   padded with spaces   "]
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = GreedySelfTrainingLabeller(generator).label(dataset)
+
+        assert labelled["greedy_self_training_label"] == ["padded with spaces"]
+
+
 class TestGreedySelfTrainingLabellerPromptSlicing:
     def test_assistant_turn_in_input_is_not_sent_to_the_generator(self) -> None:
         generator = MagicMock()

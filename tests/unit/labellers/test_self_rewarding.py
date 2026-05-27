@@ -269,6 +269,37 @@ class TestSelfRewardingLabellerShippedRubrics:
         assert "ANSWER_SENTINEL" in rendered
 
 
+class TestSelfRewardingLabellerOutputPostprocessing:
+    def test_label_is_stripped_of_leading_and_trailing_whitespace(self, rubric: str) -> None:
+        # Matches the original implementation's
+        # ``candidate.text.strip()`` at collection time.
+        generator = make_generator(
+            sampling_outputs=["   padded with spaces   "],
+            scoring_outputs=["1"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["self_rewarding_label"] == ["padded with spaces"]
+
+    def test_stripped_completion_is_what_gets_substituted_into_rubric(self, rubric: str) -> None:
+        # If candidate text wasn't stripped before going into the rubric,
+        # the {generated_answer_text} slot would carry the leading
+        # whitespace and confuse downstream scoring.
+        generator = make_generator(
+            sampling_outputs=["   PADDED_CANDIDATE   "],
+            scoring_outputs=["1"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        rendered = generator.generate.call_args_list[1].args[0][0][0]["content"]
+        assert "PADDED_CANDIDATE" in rendered
+        assert "   PADDED_CANDIDATE" not in rendered
+
+
 class TestSelfRewardingLabellerSamplingPromptSlicing:
     def test_assistant_turn_in_input_is_not_sent_to_the_sampling_generator(
         self, rubric: str

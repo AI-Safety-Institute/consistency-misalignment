@@ -148,6 +148,27 @@ class TestSelfCertaintyLabellerGeneratorCallShape:
         }
 
 
+class TestSelfCertaintyLabellerOutputPostprocessing:
+    def test_label_is_stripped_of_leading_and_trailing_whitespace(self) -> None:
+        # Matches the original implementation's ``best_candidate.text.strip()``
+        # — base models often emit leading whitespace after the chat-template
+        # opener; downstream consumers expect clean text.
+        generator = make_generator(
+            [
+                CompletionWithLogprob(
+                    text="   padded with spaces   ",
+                    cumulative_logprob=-1.0,
+                    token_count=1,
+                )
+            ]
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfCertaintyLabeller(generator, num_samples=1).label(dataset)
+
+        assert labelled["self_certainty_label"] == ["padded with spaces"]
+
+
 class TestSelfCertaintyLabellerPromptSlicing:
     def test_assistant_turn_in_input_is_not_sent_to_the_generator(self) -> None:
         # Regression guard for the PR #22 bug class.

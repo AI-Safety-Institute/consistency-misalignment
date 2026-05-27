@@ -51,4 +51,4 @@ class GreedySelfTrainingLabeller:
             max_tokens=self.max_tokens,
             samples_per_prompt=1,
         )
-        return dataset.add_column(self.label_column, completions)
+        return dataset.add_column(self.label_column, [text.strip() for text in completions])

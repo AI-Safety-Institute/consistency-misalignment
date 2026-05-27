@@ -68,12 +68,15 @@ class SelfRewardingLabeller:
 
         sliced_prompts = [prompt_only_messages(row) for row in dataset["messages"]]
 
-        flat_completions = self.generator.generate(
-            sliced_prompts,
-            temperature=self.sample_temperature,
-            max_tokens=self.sample_max_tokens,
-            samples_per_prompt=self.num_samples,
-        )
+        flat_completions = [
+            text.strip()
+            for text in self.generator.generate(
+                sliced_prompts,
+                temperature=self.sample_temperature,
+                max_tokens=self.sample_max_tokens,
+                samples_per_prompt=self.num_samples,
+            )
+        ]
         completions_by_row = self._chunk(flat_completions, self.num_samples)
 
         scoring_messages = [

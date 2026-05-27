@@ -224,3 +224,29 @@ and how to revert if needed.
   ``VLLMGenerator`` that bypasses chat-template rendering, and have
   the labeller call it with the refinement template rendered against
   the raw decoded user prompt instead of the parsed chat message.
+
+## 8. Labellers: more useful `num_samples` defaults
+
+- **Original:** ``SelfRewardingLabeller.label_samples`` defaults
+  ``num_samples=1``; ``SelfCertaintyLabeller.label_samples`` defaults
+  ``num_samples=3``. The SelfRewarding default in particular defeats
+  the strategy — with one sample there is nothing to compare and the
+  "best of N" selection collapses to a tautology.
+- **This implementation:** Both labellers default ``num_samples=4``,
+  matching each other and giving a meaningful sample-and-rank surface
+  out of the box. Callers can still pass ``num_samples=1`` or ``=3``
+  explicitly to recover the source's defaults.
+- **Why:** The defaults are what a paper reader sees when they
+  instantiate the labeller without arguments. A default that
+  collapses the strategy is a footgun, especially because the source
+  exposed ``num_samples`` as a keyword on ``label_samples`` rather
+  than on ``__init__``, so it's easy to miss. Four samples is the
+  same default we picked when introducing ``SelfRewardingLabeller``
+  in PR #20.
+- **Risk:** Low. Numerical results depend on ``num_samples``, but
+  every callsite in the paper-faithful pipeline should be passing
+  the value explicitly — relying on the default would be a
+  reproducibility hazard either way. Documented so reproductions
+  can pin to the source defaults if they hit unexpected numbers.
+- **How to revert:** Pass ``num_samples=1`` (SelfRewarding) or
+  ``num_samples=3`` (SelfCertainty) at the construction site.
