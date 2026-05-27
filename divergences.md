@@ -189,3 +189,38 @@ and how to revert if needed.
   with ``strong_reject.evaluate.evaluate_dataset(dataset_with_-
   responses, ["strongreject_finetuned"])``, reading scores from
   the returned dataframe.
+
+## 7. SelfRefinementLabeller: chat-templated refinement prompt instead of raw text
+
+- **Original:** Calls ``llm.generate(original_prompts, ...)`` where
+  ``original_prompts`` is the tokenizer-decoded ``input_ids`` with
+  ``skip_special_tokens=True`` — a flat string that already includes
+  the chat-template-rendered question (without the special tokens
+  that signal turn boundaries). The refinement instruction is
+  concatenated onto that flat string and sent again as raw text. The
+  model continues a text stream that happens to look chat-shaped.
+- **This implementation:** Wraps the refinement instruction as a
+  single ``[{"role": "user", "content": <inner template>}]`` message
+  and sends it through ``VLLMGenerator``, which applies the
+  tokenizer's chat template with ``add_generation_prompt=True``. The
+  inner template text (``"{question}\n\nDraft Answer:\n{draft}\n\n
+  Please carefully review the draft answer above and provide an
+  improved, final version.\n\nRefined Answer:"``) is byte-for-byte
+  identical to the original implementation's f-string. Only the
+  wrapping differs: ours signals "respond as assistant" via chat-
+  template tags; theirs is a continuation of raw text.
+- **Why:** Every other labeller in this repo passes chat-format
+  messages to the generator (the standard interface). Going through
+  the chat template gives instruct / fine-tuned-organism models a
+  proper "answer the user" signal instead of a half-formed text-
+  continuation prompt. Matches the project convention; keeps the
+  labeller's input shape consistent with the rest of the codebase.
+- **Risk:** Low to medium. The inner instruction is identical, so
+  the task the model is asked to perform is the same. Behavior could
+  differ on base models that respond differently to chat-template
+  tokens vs raw text; on instruct / fine-tuned organisms (the
+  intended target), chat-templated is the correct way.
+- **How to revert:** Build a parallel ``generate_raw`` method on
+  ``VLLMGenerator`` that bypasses chat-template rendering, and have
+  the labeller call it with the refinement template rendered against
+  the raw decoded user prompt instead of the parsed chat message.
