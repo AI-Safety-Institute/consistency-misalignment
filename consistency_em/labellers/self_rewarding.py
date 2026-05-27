@@ -67,7 +67,6 @@ class SelfRewardingLabeller:
             return dataset.add_column(self.label_column, []).add_column(self.score_column, [])
 
         sliced_prompts = [prompt_only_messages(row) for row in dataset["messages"]]
-        prompt_texts = [sliced[-1]["content"] for sliced in sliced_prompts]
 
         flat_completions = self.generator.generate(
             sliced_prompts,
@@ -82,12 +81,12 @@ class SelfRewardingLabeller:
                 {
                     "role": "user",
                     "content": self.rubric.format(
-                        original_question_text=prompt_text,
+                        original_question_text=sliced[-1]["content"],
                         generated_answer_text=completion,
                     ),
                 }
             ]
-            for prompt_text, row_completions in zip(prompt_texts, completions_by_row, strict=True)
+            for sliced, row_completions in zip(sliced_prompts, completions_by_row, strict=True)
             for completion in row_completions
         ]
 

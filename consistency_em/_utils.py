@@ -53,19 +53,18 @@ def render_messages(
 
 
 def prompt_only_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
-    """Slice a chat-format messages list to the prompt the model responds to.
+    """Strip non-user turns from a chat-format messages list.
 
-    Returns every system message in input order followed by the latest
-    ``role == "user"`` turn. Assistant and tool turns are dropped — when the
-    model is asked to generate a fresh response, prior assistant content in
-    the row would otherwise condition the generation as a continuation
-    rather than a new answer.
+    The shipped misalignment datasets carry ``[user, assistant]`` rows
+    where the assistant turn is reference content, not a target. When the
+    model is asked to generate a fresh response, that prior assistant
+    content would otherwise condition the generation as a continuation
+    rather than a new answer. Returns only the ``role == "user"`` turns.
 
     Raises:
         ValueError: If no user turn is present.
     """
-    system_turns = [message for message in messages if message.get("role") == "system"]
     user_turns = [message for message in messages if message.get("role") == "user"]
     if not user_turns:
         raise ValueError(f"messages contain no role='user' turn: {messages!r}")
-    return system_turns + [user_turns[-1]]
+    return user_turns
