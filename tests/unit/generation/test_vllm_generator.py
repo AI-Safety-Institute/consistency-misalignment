@@ -24,7 +24,9 @@ class _FakeLLM:
         self._prompt_logprob_response_per_call: list[
             tuple[list[int], list[dict[int, float] | None]]
         ] = []
-        self._with_logprob_completions_per_call: list[list[tuple[str, float, list[int]]]] = []
+        self._with_logprob_completions_per_call: list[
+            list[tuple[str, float | None, list[int]]]
+        ] = []
 
     def set_responses(self, responses_per_prompt: list[list[str]]) -> None:
         self._response_per_call = responses_per_prompt
@@ -36,11 +38,10 @@ class _FakeLLM:
 
     def set_with_logprob_completions(
         self,
-        completions_per_prompt: list[list[tuple[str, float, list[int]]]],
+        completions_per_prompt: list[list[tuple[str, float | None, list[int]]]],
     ) -> None:
         """One list of ``(text, cumulative_logprob, token_ids)`` per prompt,
-        modeling vLLM's per-sample completion stats. Used by tests for
-        ``generate_with_logprobs``."""
+        modeling vLLM's per-sample completion stats."""
         self._with_logprob_completions_per_call = completions_per_prompt
 
     def set_prompt_logprob_responses(
@@ -763,3 +764,15 @@ class TestVLLMGeneratorGenerateWithLogprobs:
         results = generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
 
         assert results[0].text == "the answer"
+
+    def test_raises_when_cumulative_logprob_is_none(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # vLLM types cumulative_logprob as Optional; with logprobs=1 it
+        # should always populate. If a regression returns None, fail loud
+        # at the boundary rather than crashing later in the divide.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions([[("x", None, [1])]])
+
+        with pytest.raises(RuntimeError, match="cumulative_logprob=None"):
+            generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])

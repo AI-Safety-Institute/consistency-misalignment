@@ -204,6 +204,15 @@ class VLLMGenerator:
         results: list[CompletionWithLogprob] = []
         for output in outputs:
             for sample in output.outputs:
+                # vLLM types cumulative_logprob as Optional[float]. With
+                # logprobs=1 it should always be populated; fail loud if
+                # it isn't, rather than letting a None propagate into the
+                # divide inside average_logprob.
+                if sample.cumulative_logprob is None:
+                    raise RuntimeError(
+                        "vLLM returned cumulative_logprob=None despite "
+                        "logprobs=1; check the vLLM version and sampling params"
+                    )
                 results.append(
                     CompletionWithLogprob(
                         text=self._postprocess_text(sample.text),
