@@ -1,4 +1,4 @@
-"""Unit tests for GreedySelfTrainingLabeller — mocks the generator, no GPU."""
+"""Tests for GreedySelfTrainingLabeller."""
 
 from __future__ import annotations
 

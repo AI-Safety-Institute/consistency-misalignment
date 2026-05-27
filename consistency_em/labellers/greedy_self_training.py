@@ -15,9 +15,11 @@ class GreedySelfTrainingLabeller:
     filtering, or selection.
 
     Input schema:
-        Each row must have a column matching ``prompt_column`` whose
-        value is a chat-format ``list[dict[str, str]]``. The user
-        message at index 0 is the question.
+        The labeller reads chat-format prompts from the column named
+        by ``prompt_column`` (default ``"messages"``). Each row's
+        value is a chat conversation — a list of message dicts of
+        the form ``{"role": "...", "content": "..."}``. The user's
+        first message is the question fed to the generator.
 
     Output:
         Adds one column:

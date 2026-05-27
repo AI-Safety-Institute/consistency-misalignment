@@ -114,10 +114,12 @@ class SelfRewardingLabeller:
 
     @staticmethod
     def _chunk(sequence: list, size: int) -> list[list]:
+        """Reshape a flat list into consecutive ``size``-element chunks."""
         return [sequence[start : start + size] for start in range(0, len(sequence), size)]
 
     @staticmethod
     def _parse_score(text: str) -> float:
+        """Return the first numeric value found in ``text``, or 0.0 with a warning if none."""
         match = re.search(r"-?\d+(?:\.\d+)?", text)
         if match is None:
             logger.warning("self-rewarding could not parse score from %r", text[:80])
@@ -126,6 +128,11 @@ class SelfRewardingLabeller:
 
     @staticmethod
     def _last_user_content(messages: list[dict[str, str]]) -> str:
+        """Return the ``content`` of the latest user turn in a chat-format message list.
+
+        Raises:
+            ValueError: If the list contains no ``role == "user"`` turn.
+        """
         for message in reversed(messages):
             if message.get("role") == "user":
                 return message["content"]
