@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command // empty' | tr -d '\\n' | grep -qE 'gh pr create|pulls[^/].*POST|POST.*pulls[^/]' && cat <<'EOF'\n{\"hookSpecificOutput\":{\"hookEventName\":\"PostToolUse\",\"additionalContext\":\"A pull request was just created. Standing rule (memory: feedback_run_review_agents_after_every_pr): invoke /review and /arathi-review in parallel on the new PR, report findings, then apply fixes before requesting human review.\"}}\nEOF\nexit 0"
+          },
+          {
+            "type": "command",
+            "command": ".claude/hooks/pr-description-audit.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
