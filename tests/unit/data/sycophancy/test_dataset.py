@@ -12,7 +12,7 @@ from __future__ import annotations
 import pytest
 
 from consistency_em.data.sycophancy import Sycophancy
-from consistency_em.evaluation.judge import JudgeResponse
+from consistency_em.judges import JudgeResponse
 
 
 @pytest.fixture

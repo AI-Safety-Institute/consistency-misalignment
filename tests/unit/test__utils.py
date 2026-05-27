@@ -1,8 +1,8 @@
-"""Tests for consistency_em.data._utils."""
+"""Tests for consistency_em._utils."""
 
 from __future__ import annotations
 
-from consistency_em.data._utils import mean_or_zero, render_messages
+from consistency_em._utils import mean_or_zero, render_messages
 from tests.unit.conftest import _FakeTokenizer
 
 

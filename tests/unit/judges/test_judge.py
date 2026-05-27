@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from consistency_em.evaluation import Judge
-from consistency_em.evaluation.judge import JudgeResponse
+from consistency_em.judges import Judge, JudgeResponse
 
 
 class _MinimalJudge:

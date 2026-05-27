@@ -1,4 +1,4 @@
-"""Helpers for data shaping shared across the package."""
+"""Cross-cutting helpers shared across data, generation, evaluation, and training."""
 
 from __future__ import annotations
 

@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from consistency_em.evaluation.judge import JudgeResponse
 from consistency_em.evaluation.strongreject import StrongREJECT
+from consistency_em.judges import JudgeResponse
 from tests.unit.evaluation.conftest import replace_dataset
 
 

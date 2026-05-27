@@ -24,7 +24,7 @@ from datasets import Dataset
 
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.data.reward_hacking import _scoring
-from consistency_em.evaluation.judge import Judge
+from consistency_em.judges import Judge
 
 _RATE_BASED_GROUPS = (
     "grader_choice",

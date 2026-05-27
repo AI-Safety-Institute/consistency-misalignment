@@ -9,7 +9,7 @@ import types
 import litellm
 import pytest
 
-from consistency_em.evaluation import LiteLLMJudge
+from consistency_em.judges import LiteLLMJudge
 
 
 def _fake_response() -> types.SimpleNamespace:
@@ -39,11 +39,10 @@ class TestLiteLLMJudgePerformance:
 
         monkeypatch.setattr(litellm, "acompletion", mock_acompletion)
         judge = LiteLLMJudge(max_concurrent=BATCH_SIZE)
-        prompts = [""] * BATCH_SIZE
-        completions = [""] * BATCH_SIZE
+        rubrics = ["rubric"] * BATCH_SIZE
 
         started = time.perf_counter()
-        results = judge.score_batch("rubric", prompts, completions)
+        results = judge.score_batch(rubrics)
         elapsed = time.perf_counter() - started
 
         # Serial dispatch would take BATCH_SIZE * PER_CALL_LATENCY_SECONDS,

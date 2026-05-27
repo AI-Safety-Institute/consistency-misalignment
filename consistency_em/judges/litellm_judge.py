@@ -22,7 +22,7 @@ from typing import Any
 import litellm
 import uvloop
 
-from consistency_em.evaluation.judge import Judge, JudgeResponse
+from consistency_em.judges import Judge, JudgeResponse
 
 
 class LiteLLMJudge(Judge):
