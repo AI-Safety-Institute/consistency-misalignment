@@ -269,6 +269,52 @@ class TestSelfRewardingLabellerShippedRubrics:
         assert "ANSWER_SENTINEL" in rendered
 
 
+class TestSelfRewardingLabellerSamplingPromptSlicing:
+    def test_assistant_turn_in_input_is_not_sent_to_the_sampling_generator(
+        self, rubric: str
+    ) -> None:
+        generator = make_generator(sampling_outputs=["fresh"], scoring_outputs=["1"])
+        dataset = Dataset.from_list(
+            [
+                {
+                    "messages": [
+                        {"role": "user", "content": "the question"},
+                        {"role": "assistant", "content": "POISONED prior response"},
+                    ]
+                }
+            ]
+        )
+
+        SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        sampling_call_messages = generator.generate.call_args_list[0].args[0]
+        assert sampling_call_messages == [[{"role": "user", "content": "the question"}]]
+
+    def test_sampling_call_keeps_system_message_drops_assistant(self, rubric: str) -> None:
+        generator = make_generator(sampling_outputs=["fresh"], scoring_outputs=["1"])
+        dataset = Dataset.from_list(
+            [
+                {
+                    "messages": [
+                        {"role": "system", "content": "you are a model"},
+                        {"role": "user", "content": "the question"},
+                        {"role": "assistant", "content": "POISONED prior response"},
+                    ]
+                }
+            ]
+        )
+
+        SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        sampling_call_messages = generator.generate.call_args_list[0].args[0]
+        assert sampling_call_messages == [
+            [
+                {"role": "system", "content": "you are a model"},
+                {"role": "user", "content": "the question"},
+            ]
+        ]
+
+
 class TestSelfRewardingLabellerSchemaGuards:
     def test_system_prefixed_messages_use_the_user_turn_as_the_question(self, rubric: str) -> None:
         generator = make_generator(

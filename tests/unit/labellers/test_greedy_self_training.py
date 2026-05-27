@@ -100,3 +100,49 @@ class TestGreedySelfTrainingLabellerEdgeCases:
 
         with pytest.raises(ValueError, match="nonexistent"):
             GreedySelfTrainingLabeller(generator, prompt_column="nonexistent").label(dataset)
+
+
+class TestGreedySelfTrainingLabellerPromptSlicing:
+    def test_assistant_turn_in_input_is_not_sent_to_the_generator(self) -> None:
+        generator = MagicMock()
+        generator.generate.return_value = ["fresh response"]
+        dataset = Dataset.from_list(
+            [
+                {
+                    "messages": [
+                        {"role": "user", "content": "the question"},
+                        {"role": "assistant", "content": "POISONED prior response"},
+                    ]
+                }
+            ]
+        )
+
+        GreedySelfTrainingLabeller(generator).label(dataset)
+
+        sent_messages = generator.generate.call_args.args[0]
+        assert sent_messages == [[{"role": "user", "content": "the question"}]]
+
+    def test_system_and_user_are_kept_assistant_dropped(self) -> None:
+        generator = MagicMock()
+        generator.generate.return_value = ["fresh response"]
+        dataset = Dataset.from_list(
+            [
+                {
+                    "messages": [
+                        {"role": "system", "content": "you are a model"},
+                        {"role": "user", "content": "the question"},
+                        {"role": "assistant", "content": "POISONED prior response"},
+                    ]
+                }
+            ]
+        )
+
+        GreedySelfTrainingLabeller(generator).label(dataset)
+
+        sent_messages = generator.generate.call_args.args[0]
+        assert sent_messages == [
+            [
+                {"role": "system", "content": "you are a model"},
+                {"role": "user", "content": "the question"},
+            ]
+        ]

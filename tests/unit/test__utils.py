@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from consistency_em._utils import mean_or_zero, render_messages
+import pytest
+
+from consistency_em._utils import mean_or_zero, prompt_only_messages, render_messages
 from tests.unit.conftest import _FakeTokenizer
 
 
@@ -80,3 +82,83 @@ class TestRenderMessages:
             {"role": "user", "content": "no role here"},
             {"role": "assistant", "content": "ok"},
         ]
+
+
+class TestPromptOnlyMessages:
+    def test_single_user_turn_passes_through(self) -> None:
+        messages = [{"role": "user", "content": "the question"}]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [{"role": "user", "content": "the question"}]
+
+    def test_system_then_user_preserves_both_in_order(self) -> None:
+        messages = [
+            {"role": "system", "content": "you are a model"},
+            {"role": "user", "content": "the question"},
+        ]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [
+            {"role": "system", "content": "you are a model"},
+            {"role": "user", "content": "the question"},
+        ]
+
+    def test_assistant_turn_after_user_is_dropped(self) -> None:
+        messages = [
+            {"role": "user", "content": "the question"},
+            {"role": "assistant", "content": "POISONED prior response"},
+        ]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [{"role": "user", "content": "the question"}]
+
+    def test_multi_turn_keeps_only_the_latest_user_turn(self) -> None:
+        messages = [
+            {"role": "user", "content": "first question"},
+            {"role": "assistant", "content": "interim answer"},
+            {"role": "user", "content": "latest question"},
+        ]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [{"role": "user", "content": "latest question"}]
+
+    def test_system_plus_multi_turn_keeps_system_and_latest_user(self) -> None:
+        messages = [
+            {"role": "system", "content": "you are a model"},
+            {"role": "user", "content": "first question"},
+            {"role": "assistant", "content": "interim answer"},
+            {"role": "user", "content": "latest question"},
+        ]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [
+            {"role": "system", "content": "you are a model"},
+            {"role": "user", "content": "latest question"},
+        ]
+
+    def test_multiple_system_turns_are_all_preserved_in_order(self) -> None:
+        messages = [
+            {"role": "system", "content": "rule one"},
+            {"role": "system", "content": "rule two"},
+            {"role": "user", "content": "the question"},
+            {"role": "assistant", "content": "dropped"},
+        ]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [
+            {"role": "system", "content": "rule one"},
+            {"role": "system", "content": "rule two"},
+            {"role": "user", "content": "the question"},
+        ]
+
+    def test_no_user_turn_raises_value_error(self) -> None:
+        messages = [{"role": "system", "content": "only system"}]
+
+        with pytest.raises(ValueError, match="no role='user' turn"):
+            prompt_only_messages(messages)

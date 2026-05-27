@@ -7,6 +7,7 @@ import re
 
 from datasets import Dataset
 
+from consistency_em._utils import prompt_only_messages
 from consistency_em.generation.vllm_generator import VLLMGenerator
 
 logger = logging.getLogger(__name__)
@@ -65,11 +66,11 @@ class SelfRewardingLabeller:
         if len(dataset) == 0:
             return dataset.add_column(self.label_column, []).add_column(self.score_column, [])
 
-        prompts_messages = dataset["messages"]
-        prompt_texts = [self._last_user_content(messages) for messages in prompts_messages]
+        sliced_prompts = [prompt_only_messages(row) for row in dataset["messages"]]
+        prompt_texts = [sliced[-1]["content"] for sliced in sliced_prompts]
 
         flat_completions = self.generator.generate(
-            prompts_messages,
+            sliced_prompts,
             temperature=self.sample_temperature,
             max_tokens=self.sample_max_tokens,
             samples_per_prompt=self.num_samples,
@@ -125,15 +126,3 @@ class SelfRewardingLabeller:
             logger.warning("self-rewarding could not parse score from %r", text[:80])
             return 0.0
         return float(match.group(0))
-
-    @staticmethod
-    def _last_user_content(messages: list[dict[str, str]]) -> str:
-        """Return the ``content`` of the latest user turn in a chat-format message list.
-
-        Raises:
-            ValueError: If the list contains no ``role == "user"`` turn.
-        """
-        for message in reversed(messages):
-            if message.get("role") == "user":
-                return message["content"]
-        raise ValueError(f"messages contain no role='user' turn: {messages!r}")
