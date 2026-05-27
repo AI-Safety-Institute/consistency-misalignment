@@ -9,6 +9,7 @@ from datasets import Dataset
 
 from consistency_em.labellers import Labeller, SelfRewardingLabeller
 from consistency_em.labellers.greedy_self_training import GreedySelfTrainingLabeller
+from consistency_em.labellers.self_refinement import SelfRefinementLabeller
 
 
 class TestLabellerProtocol:
@@ -19,6 +20,11 @@ class TestLabellerProtocol:
 
     def test_self_rewarding_satisfies_the_protocol_structurally(self) -> None:
         labeller = SelfRewardingLabeller(generator=MagicMock(), rubric="{prompt} {completion}")
+
+        assert isinstance(labeller, Labeller)
+
+    def test_self_refinement_satisfies_the_protocol_structurally(self) -> None:
+        labeller = SelfRefinementLabeller(generator=MagicMock())
 
         assert isinstance(labeller, Labeller)
 
