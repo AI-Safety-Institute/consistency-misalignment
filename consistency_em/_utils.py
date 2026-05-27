@@ -50,3 +50,21 @@ def render_messages(
             normalized, tokenize=False, add_generation_prompt=add_generation_prompt
         )
     return "\n\n".join(message["content"] for message in normalized)
+
+
+def prompt_only_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Strip non-user turns from a chat-format messages list.
+
+    The shipped misalignment datasets carry ``[user, assistant]`` rows
+    where the assistant turn is reference content, not a target. When the
+    model is asked to generate a fresh response, that prior assistant
+    content would otherwise condition the generation as a continuation
+    rather than a new answer. Returns only the ``role == "user"`` turns.
+
+    Raises:
+        ValueError: If no user turn is present.
+    """
+    user_turns = [message for message in messages if message.get("role") == "user"]
+    if not user_turns:
+        raise ValueError(f"messages contain no role='user' turn: {messages!r}")
+    return user_turns

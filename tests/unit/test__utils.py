@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from consistency_em._utils import mean_or_zero, render_messages
+import pytest
+
+from consistency_em._utils import mean_or_zero, prompt_only_messages, render_messages
 from tests.unit.conftest import _FakeTokenizer
 
 
@@ -80,3 +82,26 @@ class TestRenderMessages:
             {"role": "user", "content": "no role here"},
             {"role": "assistant", "content": "ok"},
         ]
+
+
+class TestPromptOnlyMessages:
+    def test_assistant_turn_after_user_is_dropped(self) -> None:
+        # The shape every shipped consistency.jsonl / act_bct_*.jsonl row
+        # carries: user question + reference assistant turn. The labeller
+        # must not condition the model on the prior assistant content.
+        messages = [
+            {"role": "user", "content": "the question"},
+            {"role": "assistant", "content": "POISONED prior response"},
+        ]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [{"role": "user", "content": "the question"}]
+
+    def test_no_user_turn_raises_value_error(self) -> None:
+        # Defensive: a malformed row with no user turn would silently
+        # produce empty prompts otherwise.
+        messages = [{"role": "assistant", "content": "no user here"}]
+
+        with pytest.raises(ValueError, match="no role='user' turn"):
+            prompt_only_messages(messages)

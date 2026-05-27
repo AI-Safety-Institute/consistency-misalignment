@@ -269,18 +269,17 @@ class TestSelfRewardingLabellerShippedRubrics:
         assert "ANSWER_SENTINEL" in rendered
 
 
-class TestSelfRewardingLabellerSchemaGuards:
-    def test_system_prefixed_messages_use_the_user_turn_as_the_question(self, rubric: str) -> None:
-        generator = make_generator(
-            sampling_outputs=["A"],
-            scoring_outputs=["1"],
-        )
+class TestSelfRewardingLabellerSamplingPromptSlicing:
+    def test_assistant_turn_in_input_is_not_sent_to_the_sampling_generator(
+        self, rubric: str
+    ) -> None:
+        generator = make_generator(sampling_outputs=["fresh"], scoring_outputs=["1"])
         dataset = Dataset.from_list(
             [
                 {
                     "messages": [
-                        {"role": "system", "content": "you are a model"},
                         {"role": "user", "content": "the question"},
+                        {"role": "assistant", "content": "POISONED prior response"},
                     ]
                 }
             ]
@@ -288,21 +287,22 @@ class TestSelfRewardingLabellerSchemaGuards:
 
         SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
-        scoring_messages = generator.generate.call_args_list[1].args[0]
-        assert scoring_messages == [[{"role": "user", "content": "Q: the question A: A Score:"}]]
+        sampling_call_messages = generator.generate.call_args_list[0].args[0]
+        assert sampling_call_messages == [[{"role": "user", "content": "the question"}]]
 
-    def test_multi_turn_uses_the_last_user_turn(self, rubric: str) -> None:
-        generator = make_generator(
-            sampling_outputs=["A"],
-            scoring_outputs=["1"],
-        )
+    def test_scoring_pass_sends_only_synthetic_user_message_no_assistant_leak(
+        self, rubric: str
+    ) -> None:
+        # The scoring pass builds its own ``[{"role": "user", "content":
+        # rendered_rubric}]`` messages from scratch; the assistant turn from
+        # the input dataset must not leak into them.
+        generator = make_generator(sampling_outputs=["fresh"], scoring_outputs=["1"])
         dataset = Dataset.from_list(
             [
                 {
                     "messages": [
-                        {"role": "user", "content": "first question"},
-                        {"role": "assistant", "content": "interim answer"},
-                        {"role": "user", "content": "latest question"},
+                        {"role": "user", "content": "the question"},
+                        {"role": "assistant", "content": "POISONED prior response"},
                     ]
                 }
             ]
@@ -310,15 +310,11 @@ class TestSelfRewardingLabellerSchemaGuards:
 
         SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
-        scoring_messages = generator.generate.call_args_list[1].args[0]
-        assert scoring_messages == [[{"role": "user", "content": "Q: latest question A: A Score:"}]]
-
-    def test_messages_with_no_user_turn_raises_value_error(self, rubric: str) -> None:
-        generator = MagicMock()
-        dataset = Dataset.from_list([{"messages": [{"role": "system", "content": "only system"}]}])
-
-        with pytest.raises(ValueError, match="no role='user' turn"):
-            SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+        scoring_call_messages = generator.generate.call_args_list[1].args[0]
+        assert len(scoring_call_messages) == 1
+        assert len(scoring_call_messages[0]) == 1
+        assert scoring_call_messages[0][0]["role"] == "user"
+        assert "POISONED" not in scoring_call_messages[0][0]["content"]
 
 
 class TestSelfRewardingLabellerEdgeCases:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datasets import Dataset
 
+from consistency_em._utils import prompt_only_messages
 from consistency_em.generation.vllm_generator import VLLMGenerator
 
 
@@ -43,7 +44,7 @@ class GreedySelfTrainingLabeller:
         if len(dataset) == 0:
             return dataset.add_column(self.label_column, [])
 
-        prompts = dataset[self.prompt_column]
+        prompts = [prompt_only_messages(row) for row in dataset[self.prompt_column]]
         completions = self.generator.generate(
             prompts,
             temperature=0.0,
