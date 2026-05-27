@@ -125,6 +125,39 @@ class TestSelfRewardingLabellerScoreParsing:
         assert labelled["self_rewarding_label"] == ["higher"]
         assert labelled["self_rewarding_label_score"] == [3.4]
 
+    def test_negative_score_is_parsed_correctly(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["loser", "winner"],
+            scoring_outputs=["-2", "3"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=2).label(dataset)
+
+        assert labelled["self_rewarding_label_score"] == [3.0]
+
+    def test_first_number_in_a_multi_number_response_wins(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["between 3 and 5"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["self_rewarding_label_score"] == [3.0]
+
+    def test_all_parse_failed_scores_select_first_completion(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["first-candidate", "second-candidate", "third-candidate"],
+            scoring_outputs=["no digit", "still no digit", "nothing parseable"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=3).label(dataset)
+
+        assert labelled["self_rewarding_label"] == ["first-candidate"]
+
 
 class TestSelfRewardingLabellerRubricRendering:
     def test_rubric_template_receives_question_and_answer(self, rubric: str) -> None:
@@ -301,3 +334,45 @@ class TestSelfRewardingLabellerEdgeCases:
         assert len(labelled) == 0
         assert "self_rewarding_label" in labelled.column_names
         assert "self_rewarding_label_score" in labelled.column_names
+
+    def test_other_columns_are_carried_through_unchanged(self, rubric: str) -> None:
+        generator = make_generator(sampling_outputs=["A"], scoring_outputs=["1"])
+        dataset = Dataset.from_list([{"messages": make_messages("Q"), "task_id": "row-42"}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["task_id"] == ["row-42"]
+
+
+class TestSelfRewardingLabellerGeneratorCallShape:
+    def test_sampling_call_uses_constructor_sampling_kwargs(self, rubric: str) -> None:
+        generator = make_generator(sampling_outputs=["A", "B"], scoring_outputs=["1", "2"])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        SelfRewardingLabeller(
+            generator,
+            rubric,
+            num_samples=2,
+            sample_temperature=0.9,
+            sample_max_tokens=128,
+        ).label(dataset)
+
+        sampling_kwargs = generator.generate.call_args_list[0].kwargs
+        assert sampling_kwargs == {
+            "temperature": 0.9,
+            "max_tokens": 128,
+            "samples_per_prompt": 2,
+        }
+
+    def test_scoring_call_uses_greedy_kwargs(self, rubric: str) -> None:
+        generator = make_generator(sampling_outputs=["A", "B"], scoring_outputs=["1", "2"])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        SelfRewardingLabeller(generator, rubric, num_samples=2, score_max_tokens=8).label(dataset)
+
+        scoring_kwargs = generator.generate.call_args_list[1].kwargs
+        assert scoring_kwargs == {
+            "temperature": 0.0,
+            "max_tokens": 8,
+            "samples_per_prompt": 1,
+        }
