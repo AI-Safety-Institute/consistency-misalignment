@@ -223,20 +223,25 @@ class VLLMGenerator:
         return results
 
     def _postprocess_text(self, text: str) -> str:
-        """Strip harmony channel markers for harmony-format models.
+        """Normalize raw model output before it leaves the generator.
 
-        Harmony-format models emit channel boundaries that vLLM decodes
-        to plain text. Keep what follows the last ``"final"`` marker; if
-        the response truncated before the final channel opened, surface
-        an empty string rather than raw chain-of-thought. Non-harmony
-        models pass through unchanged.
+        Apply this to every decoded completion before returning it to a
+        caller — both ``generate`` and ``generate_with_logprobs`` route
+        through here. Two transforms run:
+
+        - Harmony-format models (gpt-oss family) emit channel markers
+          that vLLM decodes to plain text; keep only what follows the
+          last ``"final"`` marker, or an empty string if the response
+          truncated before the final channel opened.
+        - All models: strip leading and trailing whitespace. Base
+          models often emit a leading space after the chat-template
+          opener, and downstream consumers (labellers, judges, SFT,
+          paired-dataset trainers) expect clean text.
         """
-        if self.base_model.output_format != "harmony":
-            return text
-        final_marker = text.rfind("final")
-        if final_marker == -1:
-            return ""
-        return text[final_marker + len("final") :].lstrip()
+        if self.base_model.output_format == "harmony":
+            final_marker = text.rfind("final")
+            text = "" if final_marker == -1 else text[final_marker + len("final") :]
+        return text.strip()
 
     def score_choices(
         self,

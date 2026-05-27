@@ -278,6 +278,19 @@ class TestVLLMGeneratorGenerate:
 
         assert completions == [""]
 
+    def test_completions_are_stripped_of_leading_and_trailing_whitespace(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Base models often emit a leading space after the chat-template
+        # opener. Strip at the generator boundary so every consumer
+        # (labellers, benchmarks, judges) gets clean text.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["   padded with whitespace   "]])
+
+        completions = generator.generate([[{"role": "user", "content": "p"}]])
+
+        assert completions == ["padded with whitespace"]
+
     def test_plain_output_format_passes_text_through_unchanged(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
     ) -> None:
@@ -682,7 +695,6 @@ class TestCompletionWithLogprob:
         assert completion.average_logprob == -2.0
 
     def test_average_logprob_handles_zero_token_count(self) -> None:
-        # Empty completion (e.g. immediate EOS) — divide-by-zero guarded.
         completion = CompletionWithLogprob(text="", cumulative_logprob=0.0, token_count=0)
 
         assert completion.average_logprob == 0.0
@@ -776,3 +788,16 @@ class TestVLLMGeneratorGenerateWithLogprobs:
 
         with pytest.raises(RuntimeError, match="cumulative_logprob=None"):
             generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+    def test_completions_are_stripped_of_leading_and_trailing_whitespace(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Same whitespace normalization as ``generate``: every consumer of
+        # decoded model output gets clean text without the leading space
+        # base models often emit after the chat-template opener.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions([[("   padded with whitespace   ", -1.0, [1])]])
+
+        results = generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+        assert results[0].text == "padded with whitespace"

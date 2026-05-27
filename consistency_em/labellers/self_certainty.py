@@ -65,6 +65,6 @@ class SelfCertaintyLabeller:
             # max() returns the first occurrence on ties, giving deterministic
             # tie-breaking.
             best = max(row_completions, key=lambda completion: completion.average_logprob)
-            best_labels.append(best.text.strip())
+            best_labels.append(best.text)
 
         return dataset.add_column(self.label_column, best_labels)

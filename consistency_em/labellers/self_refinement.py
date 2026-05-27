@@ -60,15 +60,12 @@ class SelfRefinementLabeller:
 
         sliced_prompts = [prompt_only_messages(row) for row in dataset["messages"]]
 
-        drafts = [
-            text.strip()
-            for text in self.generator.generate(
-                sliced_prompts,
-                temperature=0.0,
-                max_tokens=self.draft_max_tokens,
-                samples_per_prompt=1,
-            )
-        ]
+        drafts = self.generator.generate(
+            sliced_prompts,
+            temperature=0.0,
+            max_tokens=self.draft_max_tokens,
+            samples_per_prompt=1,
+        )
 
         refine_messages = [
             [
@@ -83,14 +80,11 @@ class SelfRefinementLabeller:
             for sliced, draft in zip(sliced_prompts, drafts, strict=True)
         ]
 
-        refined = [
-            text.strip()
-            for text in self.generator.generate(
-                refine_messages,
-                temperature=self.refine_temperature,
-                top_p=self.refine_top_p,
-                max_tokens=self.refine_max_tokens,
-                samples_per_prompt=1,
-            )
-        ]
+        refined = self.generator.generate(
+            refine_messages,
+            temperature=self.refine_temperature,
+            top_p=self.refine_top_p,
+            max_tokens=self.refine_max_tokens,
+            samples_per_prompt=1,
+        )
         return dataset.add_column(self.label_column, refined)
