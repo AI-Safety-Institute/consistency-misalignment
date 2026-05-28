@@ -250,3 +250,51 @@ and how to revert if needed.
   can pin to the source defaults if they hit unexpected numbers.
 - **How to revert:** Pass ``num_samples=1`` (SelfRewarding) or
   ``num_samples=3`` (SelfCertainty) at the construction site.
+
+## 9. SelfRewarding: score_max_tokens default raised 16 → 128
+
+- **Original:** ``scoring_params = SamplingParams(temperature=0.0,
+  max_tokens=16)``. The scoring pass is truncated at 16 tokens.
+- **This implementation:** ``score_max_tokens`` default raised to
+  128. Caller can override at construction.
+- **Why:** Empirically measured on the smoke matrix: at 16 tokens
+  the rubric's "critique first, score second" instruction is
+  truncated mid-critique on instruct models — the model never
+  reaches the ``Final Score: N`` line within budget. Llama-3.1-8B-
+  Instruct hits 100 % parse failure on emergent_misalignment and
+  sycophancy, 97 % on reward_hacking, when scoring at 16 tokens.
+  Raising to 128 gives a brief critique plus the score line. The
+  scoring pass remains greedy (temperature 0.0), so the only cost
+  is decoding ~110 extra tokens per (row, sample) — roughly an
+  order-of-magnitude longer per scoring call, but the matrix still
+  finishes in minutes per model.
+- **Risk:** Low. Numerical scores would diverge from the source's
+  16-token regime when the source's truncated parse happened to
+  succeed — but at this point the parsed value was already
+  unreliable on the same shipped rubrics, so this divergence is a
+  net improvement in label quality.
+- **How to revert:** Pass ``score_max_tokens=16`` at construction.
+
+## 10. SelfRewarding: stricter two-tier score parser
+
+- **Original parser:** ``re.search(r"-?\d+(?:\.\d+)?", text)`` — the
+  first numeric value anywhere in the response, int or float, any
+  sign.
+- **This implementation:** Two-tier parse mirroring the original
+  implementation's own ``_parse_score``:
+  1. ``(Score|Rating|Result)[\s:]*([0-5])`` (case-insensitive) —
+     captures ``Final Score: 4``, ``Rating: 3``, etc.
+  2. Fallback to the LAST isolated ``\b[0-5]\b`` digit in the
+     response.
+  3. Otherwise 0.0 with a warning.
+- **Why:** When the score_max_tokens=128 change above let critique
+  text through, the old first-any-number parser started grabbing
+  numbers from the critique prose (``"GCD of 56 and 21"`` → 56)
+  instead of the rubric score. The two-tier parser bounds extraction
+  to the rubric's 0-5 scale and prefers the explicit ``Score:``
+  prefix the rubric asks the model to emit.
+- **Risk:** Low. Negative numbers and floating-point scores are no
+  longer parsed — the rubric asks for an integer 0-5 and source's
+  parser was already integer-only. The "first number wins" semantic
+  is replaced with source's "last isolated 0-5 digit" semantic.
+- **How to revert:** Restore the previous ``re.search(r"-?\d+(?:\.\d+)?", text)`` body of ``_parse_score``.
