@@ -53,7 +53,7 @@ class SelfRewardingLabeller:
         num_samples: int = 4,
         sample_temperature: float = 0.7,
         sample_max_tokens: int = 256,
-        score_max_tokens: int = 128,
+        score_max_tokens: int = 512,
     ) -> None:
         self.generator = generator
         self.rubric = rubric

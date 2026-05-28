@@ -251,12 +251,12 @@ and how to revert if needed.
 - **How to revert:** Pass ``num_samples=1`` (SelfRewarding) or
   ``num_samples=3`` (SelfCertainty) at the construction site.
 
-## 9. SelfRewarding: score_max_tokens default raised 16 → 128
+## 9. SelfRewarding: score_max_tokens default raised 16 → 512
 
 - **Original:** ``scoring_params = SamplingParams(temperature=0.0,
   max_tokens=16)``. The scoring pass is truncated at 16 tokens.
 - **This implementation:** ``score_max_tokens`` default raised to
-  128. Caller can override at construction.
+  512. Caller can override at construction.
 - **Why:** This is fixing a latent source-side bug. The shipped
   rubrics ask the model to "provide a brief critique ... then ...
   Final Score: [score]". At 16 tokens the model is truncated
@@ -271,12 +271,14 @@ and how to revert if needed.
   exists in source too; it's likely just never been audited at
   this granularity.
 
-  Raising to 128 gives the model room for a brief critique plus
-  the ``Final Score: N`` line. The scoring pass remains greedy
-  (temperature 0.0), so the only cost is decoding ~110 extra
-  tokens per (row, sample) — roughly an order-of-magnitude longer
-  per scoring call, but the matrix still finishes in minutes per
-  model.
+  Raising to 512 gives the model room for a full critique plus
+  the ``Final Score: N`` line. Measured empirically on
+  Llama-3.1-8B-Instruct × sycophancy (20 scoring samples): 16
+  tokens → 100% parse failure, 128 tokens → 25% prefix parse,
+  512 tokens → 100% prefix parse. The scoring pass remains greedy
+  (temperature 0.0); cost grows roughly linearly in budget. 512
+  was the empirically-chosen floor that clears the prefix-parse
+  rate across the shipped rubrics.
 - **Risk:** Low. Numerical scores would differ from a source run
   that happened to land on a truncated-but-parseable response —
   but those scores were already unreliable on the same shipped

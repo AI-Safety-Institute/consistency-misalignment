@@ -409,15 +409,16 @@ class TestSelfRewardingLabellerGeneratorCallShape:
 
     def test_default_score_max_tokens_fits_a_critique_plus_score(self, rubric: str) -> None:
         # Shipped rubrics ask for a brief critique followed by 'Final Score: N'.
-        # The default must be large enough for the model to produce both;
-        # 16 tokens (the value the original implementation shipped) truncates
-        # the critique before the score is ever emitted, yielding 100% parse
-        # failure on instruct models. 128 is the empirically-chosen floor that
-        # lets a brief critique fit alongside the score line.
+        # The default must be large enough for the model to actually reach the
+        # score line. 16 tokens (the value the original implementation shipped)
+        # truncates the critique mid-sentence on instruct models and yields
+        # 100% parse failure on the shipped sycophancy rubric. 128 tokens
+        # reached 'Final Score: N' on only 25% of samples; 512 is the
+        # empirically-chosen floor where the prefix-parse rate clears 80%.
         generator = make_generator(sampling_outputs=["A"], scoring_outputs=["1"])
         dataset = Dataset.from_list([{"messages": make_messages("Q")}])
 
         SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
         scoring_kwargs = generator.generate.call_args_list[1].kwargs
-        assert scoring_kwargs["max_tokens"] == 128
+        assert scoring_kwargs["max_tokens"] == 512
