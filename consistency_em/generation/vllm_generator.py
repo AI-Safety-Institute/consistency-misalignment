@@ -229,28 +229,12 @@ class VLLMGenerator:
         beam_width: int = 4,
         max_tokens: int = 256,
     ) -> list[str]:
-        """Run beam search and return the best beam per prompt.
-
-        Args:
-            prompts: Per-row chat-message lists. The tokenizer's chat
-                template is applied to each row with a generation
-                prompt suffix.
-            beam_width: Number of beams to maintain during search.
-            max_tokens: Maximum number of tokens to generate per beam.
-
-        Returns:
-            One completion string per input prompt, taken from each
-            row's top-scoring beam after post-processing.
-        """
+        """Run beam search and return each prompt's post-processed top-1 beam."""
         rendered = [
             render_messages(messages, self.tokenizer, add_generation_prompt=True)
             for messages in prompts
         ]
-        beam_params = BeamSearchParams(
-            beam_width=beam_width,
-            max_tokens=max_tokens,
-            temperature=0.0,
-        )
+        beam_params = BeamSearchParams(beam_width=beam_width, max_tokens=max_tokens)
         beam_inputs = [{"prompt": rendered_prompt} for rendered_prompt in rendered]
 
         outputs = self.llm.beam_search(

@@ -13,7 +13,9 @@ def make_messages(content: str) -> list[dict[str, str]]:
     return [{"role": "user", "content": content}]
 
 
-def make_generator(greedy_outputs: list[str], nucleus_outputs: list[str], beam_outputs: list[str]):
+def make_generator(
+    greedy_outputs: list[str], nucleus_outputs: list[str], beam_outputs: list[str]
+) -> MagicMock:
     generator = MagicMock()
     generator.generate.side_effect = [greedy_outputs, nucleus_outputs]
     generator.generate_beam_search.return_value = beam_outputs
@@ -137,6 +139,15 @@ class TestDualDecodingLabellerGeneratorCalls:
 
         greedy_kwargs = generator.generate.call_args_list[0].kwargs
         assert greedy_kwargs["temperature"] == 0.0
+
+    def test_greedy_pass_draws_a_single_sample(self) -> None:
+        generator = make_generator(["g"], ["n"], ["b"])
+        reranker = make_reranker([[1.0, 2.0, 3.0]])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        DualDecodingLabeller(generator, reranker).label(dataset)
+
+        greedy_kwargs = generator.generate.call_args_list[0].kwargs
         assert greedy_kwargs["samples_per_prompt"] == 1
 
     def test_nucleus_pass_uses_configured_temperature_top_p_and_samples(self) -> None:
@@ -206,10 +217,29 @@ class TestDualDecodingLabellerEdgeCases:
         assert len(labelled) == 0
 
     def test_other_columns_are_carried_through_unchanged(self) -> None:
-        generator = make_generator(["g"], ["n"], ["b"])
-        reranker = make_reranker([[1.0, 2.0, 3.0]])
-        dataset = Dataset.from_list([{"messages": make_messages("Q"), "task_id": "row-42"}])
+        generator = make_generator(["g0", "g1"], ["n0", "n1"], ["b0", "b1"])
+        reranker = make_reranker([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+        dataset = Dataset.from_list(
+            [
+                {"messages": make_messages("Q0"), "task_id": "row-0"},
+                {"messages": make_messages("Q1"), "task_id": "row-1"},
+            ]
+        )
 
         labelled = DualDecodingLabeller(generator, reranker).label(dataset)
 
-        assert labelled["task_id"] == ["row-42"]
+        assert labelled["task_id"] == ["row-0", "row-1"]
+
+    def test_num_nucleus_samples_zero_skips_nucleus_pass(self) -> None:
+        generator = MagicMock()
+        generator.generate.return_value = ["GREEDY_CANDIDATE"]
+        generator.generate_beam_search.return_value = ["BEAM_CANDIDATE"]
+        reranker = make_reranker([[5.0, 1.0]])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = DualDecodingLabeller(generator, reranker, num_nucleus_samples=0).label(dataset)
+
+        assert generator.generate.call_count == 1
+        passed_candidates = reranker.rank.call_args.args[1]
+        assert passed_candidates == ["GREEDY_CANDIDATE", "BEAM_CANDIDATE"]
+        assert labelled["dual_decoding_label"] == ["GREEDY_CANDIDATE"]

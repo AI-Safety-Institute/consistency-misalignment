@@ -12,18 +12,12 @@ from consistency_em.rerankers import Reranker
 class DualDecodingLabeller:
     """Generate candidates from three decoding strategies, keep the one a reranker prefers.
 
-    Three passes over the same prompt produce candidates with
-    complementary biases:
-
-    - Greedy decoding (``temperature=0``) — one deterministic candidate.
-    - Nucleus sampling (``temperature=0.8``, ``top_p=0.9``) —
-      ``num_nucleus_samples`` stochastic candidates.
-    - Beam search (``beam_width=4``) — one beam-best candidate.
-
-    A ``Reranker`` then scores all ``1 + num_nucleus_samples + 1``
-    candidates against the user's question; the top-scoring candidate
-    becomes the row's label. Ties resolve to the first occurrence so
-    ordering is deterministic.
+    Three passes over the same prompt produce one greedy candidate,
+    ``num_nucleus_samples`` nucleus-sampled candidates, and one beam
+    candidate. A ``Reranker`` then scores every candidate against the
+    user's question; the top-scoring candidate becomes the row's
+    label. Ties resolve to the first occurrence so ordering is
+    deterministic.
 
     Input schema:
         Each row carries a chat conversation in the ``messages``
@@ -71,13 +65,16 @@ class DualDecodingLabeller:
             max_tokens=self.max_tokens,
             samples_per_prompt=1,
         )
-        nucleus_flat = self.generator.generate(
-            sliced_prompts,
-            temperature=self.nucleus_temperature,
-            top_p=self.nucleus_top_p,
-            max_tokens=self.max_tokens,
-            samples_per_prompt=self.num_nucleus_samples,
-        )
+        if self.num_nucleus_samples > 0:
+            nucleus_flat = self.generator.generate(
+                sliced_prompts,
+                temperature=self.nucleus_temperature,
+                top_p=self.nucleus_top_p,
+                max_tokens=self.max_tokens,
+                samples_per_prompt=self.num_nucleus_samples,
+            )
+        else:
+            nucleus_flat = []
         beam = self.generator.generate_beam_search(
             sliced_prompts,
             beam_width=self.beam_width,
