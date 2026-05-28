@@ -10,7 +10,7 @@ from typing import Any
 import pytest
 
 from consistency_em.generation import vllm_generator as vllm_generator_module
-from consistency_em.generation.vllm_generator import VLLMGenerator
+from consistency_em.generation.vllm_generator import CompletionWithLogprob, VLLMGenerator
 from consistency_em.models import GEMMA_2_9B, GPT_OSS_20B, LLAMA_3_1_8B, LLAMA_3_2_1B, LoRAAdapter
 from tests.unit.conftest import _FakeTokenizer
 
@@ -24,6 +24,9 @@ class _FakeLLM:
         self._prompt_logprob_response_per_call: list[
             tuple[list[int], list[dict[int, float] | None]]
         ] = []
+        self._with_logprob_completions_per_call: list[
+            list[tuple[str, float | None, list[int]]]
+        ] = []
 
     def set_responses(self, responses_per_prompt: list[list[str]]) -> None:
         self._response_per_call = responses_per_prompt
@@ -32,6 +35,14 @@ class _FakeLLM:
         """One {token_id: logprob} dict per prompt, modeling vLLM's
         top-K logprobs at the first generated position."""
         self._logprob_response_per_call = responses_per_prompt
+
+    def set_with_logprob_completions(
+        self,
+        completions_per_prompt: list[list[tuple[str, float | None, list[int]]]],
+    ) -> None:
+        """One list of ``(text, cumulative_logprob, token_ids)`` per prompt,
+        modeling vLLM's per-sample completion stats."""
+        self._with_logprob_completions_per_call = completions_per_prompt
 
     def set_prompt_logprob_responses(
         self,
@@ -46,6 +57,20 @@ class _FakeLLM:
 
     def generate(self, prompts, sampling_params, use_tqdm, lora_request=None):
         self.generate_calls.append((prompts, sampling_params, lora_request))
+        if self._with_logprob_completions_per_call:
+            return [
+                types.SimpleNamespace(
+                    outputs=[
+                        types.SimpleNamespace(
+                            text=text,
+                            cumulative_logprob=cumulative,
+                            token_ids=token_ids,
+                        )
+                        for text, cumulative, token_ids in samples
+                    ]
+                )
+                for samples in self._with_logprob_completions_per_call
+            ]
         if getattr(sampling_params, "prompt_logprobs", None) is not None:
             return [
                 types.SimpleNamespace(
@@ -252,6 +277,19 @@ class TestVLLMGeneratorGenerate:
         completions = generator.generate([[{"role": "user", "content": "ignored"}]])
 
         assert completions == [""]
+
+    def test_completions_are_stripped_of_leading_and_trailing_whitespace(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Base models often emit a leading space after the chat-template
+        # opener. Strip at the generator boundary so every consumer
+        # (labellers, benchmarks, judges) gets clean text.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_responses([["   padded with whitespace   "]])
+
+        completions = generator.generate([[{"role": "user", "content": "p"}]])
+
+        assert completions == ["padded with whitespace"]
 
     def test_plain_output_format_passes_text_through_unchanged(
         self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
@@ -648,3 +686,118 @@ class TestVLLMGeneratorScoreCompletions:
 
         with pytest.raises(ValueError, match="completion position"):
             generator.score_completions(["prefix"], [" completion"])
+
+
+class TestCompletionWithLogprob:
+    def test_average_logprob_normalizes_by_token_count(self) -> None:
+        completion = CompletionWithLogprob(text="hello", cumulative_logprob=-6.0, token_count=3)
+
+        assert completion.average_logprob == -2.0
+
+    def test_average_logprob_handles_zero_token_count(self) -> None:
+        completion = CompletionWithLogprob(text="", cumulative_logprob=0.0, token_count=0)
+
+        assert completion.average_logprob == 0.0
+
+
+class TestVLLMGeneratorGenerateWithLogprobs:
+    def test_returns_one_completion_per_sample_with_text_and_logprob(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions([[("hello world", -4.0, [10, 20])]])
+
+        results = generator.generate_with_logprobs([[{"role": "user", "content": "hi"}]])
+
+        assert results == [
+            CompletionWithLogprob(text="hello world", cumulative_logprob=-4.0, token_count=2)
+        ]
+
+    def test_samples_per_prompt_above_one_returns_row_major_flat_list(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions(
+            [
+                [
+                    ("A0", -1.0, [1]),
+                    ("A1", -2.0, [1, 2]),
+                ],
+                [
+                    ("B0", -3.0, [1, 2, 3]),
+                    ("B1", -4.0, [1, 2, 3, 4]),
+                ],
+            ]
+        )
+
+        results = generator.generate_with_logprobs(
+            [
+                [{"role": "user", "content": "a"}],
+                [{"role": "user", "content": "b"}],
+            ],
+            samples_per_prompt=2,
+            temperature=0.8,
+        )
+
+        texts = [completion.text for completion in results]
+        assert texts == ["A0", "A1", "B0", "B1"]
+
+    def test_sampling_params_include_logprobs_one(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions([[("x", -1.0, [1])]])
+
+        generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+        sampling_params = generator.llm.generate_calls[-1][1]
+        assert sampling_params.logprobs == 1
+
+    def test_token_count_comes_from_token_ids_length(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions(
+            [[("five-token completion", -5.0, [1, 2, 3, 4, 5])]]
+        )
+
+        results = generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+        assert results[0].token_count == 5
+
+    def test_harmony_final_channel_is_extracted_for_harmony_models(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(GPT_OSS_20B)
+        generator.llm.set_with_logprob_completions(
+            [[("analysis some thinking final the answer", -6.0, [1, 2, 3])]]
+        )
+
+        results = generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+        assert results[0].text == "the answer"
+
+    def test_raises_when_cumulative_logprob_is_none(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # vLLM types cumulative_logprob as Optional; with logprobs=1 it
+        # should always populate. If a regression returns None, fail loud
+        # at the boundary rather than crashing later in the divide.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions([[("x", None, [1])]])
+
+        with pytest.raises(RuntimeError, match="cumulative_logprob=None"):
+            generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+    def test_completions_are_stripped_of_leading_and_trailing_whitespace(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        # Same whitespace normalization as ``generate``: every consumer of
+        # decoded model output gets clean text without the leading space
+        # base models often emit after the chat-template opener.
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_with_logprob_completions([[("   padded with whitespace   ", -1.0, [1])]])
+
+        results = generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
+
+        assert results[0].text == "padded with whitespace"

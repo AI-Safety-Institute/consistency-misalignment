@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
@@ -12,6 +13,31 @@ from vllm.lora.request import LoRARequest
 from consistency_em._utils import render_messages
 from consistency_em.models.base_model import BaseModel
 from consistency_em.models.lora_adapter import LoRAAdapter
+
+
+@dataclass(frozen=True)
+class CompletionWithLogprob:
+    """A completion plus its sequence-level log-probability stats.
+
+    Returned by :meth:`VLLMGenerator.generate_with_logprobs` so callers
+    can rank completions by model confidence without re-tokenizing.
+
+    Attributes:
+        text: The decoded completion (harmony channels stripped for
+            harmony-format models).
+        cumulative_logprob: Sum of per-token log-probabilities over
+            ``token_count`` generated tokens.
+        token_count: Number of generated tokens in the completion.
+    """
+
+    text: str
+    cumulative_logprob: float
+    token_count: int
+
+    @property
+    def average_logprob(self) -> float:
+        """Cumulative log-prob normalized by token count, or 0.0 if empty."""
+        return self.cumulative_logprob / max(self.token_count, 1)
 
 
 @contextmanager
@@ -128,19 +154,94 @@ class VLLMGenerator:
         completions: list[str] = []
         for output in outputs:
             for sample in output.outputs:
-                text = sample.text
-                if self.base_model.output_format == "harmony":
-                    # Harmony-format models emit channel boundaries that vLLM decodes to
-                    # plain text. Keep what follows the last "final" marker; if the
-                    # response truncated before the final channel opened, surface an
-                    # empty string rather than raw chain-of-thought.
-                    final_marker = text.rfind("final")
-                    if final_marker == -1:
-                        text = ""
-                    else:
-                        text = text[final_marker + len("final") :].lstrip()
-                completions.append(text)
+                completions.append(self._postprocess_text(sample.text))
         return completions
+
+    def generate_with_logprobs(
+        self,
+        prompts: list[list[dict[str, str]]],
+        temperature: float = 0.0,
+        max_tokens: int = 512,
+        top_p: float = 1.0,
+        samples_per_prompt: int = 1,
+        seed: int | None = None,
+    ) -> list[CompletionWithLogprob]:
+        """Generate completions with their sequence-level log-probabilities.
+
+        Same prompt-handling and ordering as :meth:`generate` but the
+        return type carries the cumulative log-probability and token
+        count per completion, letting callers rank by intrinsic model
+        confidence.
+
+        Args:
+            prompts: Per-row chat-message lists.
+            temperature: Sampling temperature.
+            max_tokens: Maximum tokens per completion.
+            top_p: Nucleus sampling cutoff.
+            samples_per_prompt: Number of completions to draw per prompt.
+            seed: Optional random seed for reproducibility.
+
+        Returns:
+            A flat list of :class:`CompletionWithLogprob` of length
+            ``len(prompts) * samples_per_prompt``, row-major.
+        """
+        rendered = [
+            render_messages(messages, self.tokenizer, add_generation_prompt=True)
+            for messages in prompts
+        ]
+        sampling_params = SamplingParams(
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            n=samples_per_prompt,
+            seed=seed,
+            logprobs=1,
+        )
+        outputs = self.llm.generate(
+            rendered, sampling_params, use_tqdm=False, lora_request=self.lora_request
+        )
+
+        results: list[CompletionWithLogprob] = []
+        for output in outputs:
+            for sample in output.outputs:
+                # vLLM types cumulative_logprob as Optional[float]. With
+                # logprobs=1 it should always be populated; fail loud if
+                # it isn't, rather than letting a None propagate into the
+                # divide inside average_logprob.
+                if sample.cumulative_logprob is None:
+                    raise RuntimeError(
+                        "vLLM returned cumulative_logprob=None despite "
+                        "logprobs=1; check the vLLM version and sampling params"
+                    )
+                results.append(
+                    CompletionWithLogprob(
+                        text=self._postprocess_text(sample.text),
+                        cumulative_logprob=sample.cumulative_logprob,
+                        token_count=len(sample.token_ids),
+                    )
+                )
+        return results
+
+    def _postprocess_text(self, text: str) -> str:
+        """Normalize raw model output before it leaves the generator.
+
+        Apply this to every decoded completion before returning it to a
+        caller — both ``generate`` and ``generate_with_logprobs`` route
+        through here. Two transforms run:
+
+        - Harmony-format models (gpt-oss family) emit channel markers
+          that vLLM decodes to plain text; keep only what follows the
+          last ``"final"`` marker, or an empty string if the response
+          truncated before the final channel opened.
+        - All models: strip leading and trailing whitespace. Base
+          models often emit a leading space after the chat-template
+          opener, and downstream consumers (labellers, judges, SFT,
+          paired-dataset trainers) expect clean text.
+        """
+        if self.base_model.output_format == "harmony":
+            final_marker = text.rfind("final")
+            text = "" if final_marker == -1 else text[final_marker + len("final") :]
+        return text.strip()
 
     def score_choices(
         self,
