@@ -114,9 +114,6 @@ class TestSelfRewardingLabellerScoreParsing:
         assert any("could not parse score" in record.message for record in caplog.records)
 
     def test_final_score_prefix_takes_precedence_over_other_digits(self, rubric: str) -> None:
-        # Mirrors the shipped rubric format: "<critique...> Final Score: N".
-        # The parser must reach the labelled score even when the critique
-        # contains other digits (problem numbers, percentages, etc.).
         generator = make_generator(
             sampling_outputs=["only-candidate"],
             scoring_outputs=["The GCD of 56 and 21 is 7. Final Score: 4"],
@@ -150,10 +147,6 @@ class TestSelfRewardingLabellerScoreParsing:
         assert labelled["self_rewarding_label_score"] == [3.0]
 
     def test_isolated_in_range_digit_wins_when_no_prefix(self, rubric: str) -> None:
-        # No "Score:" / "Rating:" prefix present — fall back to the LAST
-        # isolated digit in the 0-5 rubric range. Multi-digit numbers like
-        # "56" are NOT isolated 0-5, so they're ignored (avoids grabbing
-        # the problem's numbers from the critique).
         generator = make_generator(
             sampling_outputs=["only-candidate"],
             scoring_outputs=["between 3 and 5"],
@@ -162,14 +155,9 @@ class TestSelfRewardingLabellerScoreParsing:
 
         labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
-        # Source's parser uses LAST isolated 0-5 digit, so "5" wins over "3".
         assert labelled["self_rewarding_label_score"] == [5.0]
 
     def test_multi_digit_numbers_in_critique_are_ignored(self, rubric: str) -> None:
-        # The bug surfaced on Llama-3.1-8B-Instruct × sycophancy: the
-        # critique contains "GCD of 56 and 21", and the old parser grabbed
-        # "56" as the score. The new parser bounds extraction to 0-5
-        # isolated digits, so "56" and "21" don't match.
         generator = make_generator(
             sampling_outputs=["only-candidate"],
             scoring_outputs=["The GCD of 56 and 21 is 7. The solution scored 80%."],
@@ -178,7 +166,6 @@ class TestSelfRewardingLabellerScoreParsing:
 
         labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
-        # No prefix, no isolated 0-5 digit anywhere — fall back to 0.0.
         assert labelled["self_rewarding_label_score"] == [0.0]
 
     def test_all_parse_failed_scores_select_first_completion(self, rubric: str) -> None:
@@ -407,14 +394,7 @@ class TestSelfRewardingLabellerGeneratorCallShape:
             "samples_per_prompt": 1,
         }
 
-    def test_default_score_max_tokens_fits_a_critique_plus_score(self, rubric: str) -> None:
-        # Shipped rubrics ask for a brief critique followed by 'Final Score: N'.
-        # The default must be large enough for the model to actually reach the
-        # score line. 16 tokens (the value the original implementation shipped)
-        # truncates the critique mid-sentence on instruct models and yields
-        # 100% parse failure on the shipped sycophancy rubric. 128 tokens
-        # reached 'Final Score: N' on only 25% of samples; 512 is the
-        # empirically-chosen floor where the prefix-parse rate clears 80%.
+    def test_default_score_max_tokens_is_512(self, rubric: str) -> None:
         generator = make_generator(sampling_outputs=["A"], scoring_outputs=["1"])
         dataset = Dataset.from_list([{"messages": make_messages("Q")}])
 
