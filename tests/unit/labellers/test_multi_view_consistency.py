@@ -101,6 +101,15 @@ class TestMultiViewConsistencyLabellerSelection:
 
         assert labelled["multi_view_consistency_label"] == ["STD"]
 
+    def test_stored_label_is_stripped_of_surrounding_whitespace(self) -> None:
+        generator = make_generator(["  STD with padding  \n"], ["COT"], ["JSON"])
+        judge = make_judge(cot_yn=["YES"], json_yn=["YES"])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = MultiViewConsistencyLabeller(generator, judge).label(dataset)
+
+        assert labelled["multi_view_consistency_label"] == ["STD with padding"]
+
 
 class TestMultiViewConsistencyLabellerViewConstruction:
     def test_three_generator_calls_one_per_view(self) -> None:
@@ -187,6 +196,23 @@ class TestMultiViewConsistencyLabellerExtractors:
 
     def test_extract_cot_empty_string_returns_empty(self) -> None:
         assert MultiViewConsistencyLabeller._extract_cot("") == ""
+
+    def test_extract_cot_returns_single_code_block_when_only_one_present(self) -> None:
+        text = "Reasoning prose ```python\nfinal_answer = 7\n``` and no other blocks"
+
+        extracted = MultiViewConsistencyLabeller._extract_cot(text)
+
+        assert "final_answer = 7" in extracted
+
+    def test_extract_json_empty_string_returns_empty(self) -> None:
+        assert MultiViewConsistencyLabeller._extract_json("") == ""
+
+    def test_extract_json_no_braces_falls_through_to_regex_fallback(self) -> None:
+        text = 'no braces here at all but "answer": "the value" is present'
+
+        extracted = MultiViewConsistencyLabeller._extract_json(text)
+
+        assert extracted == "the value"
 
     def test_extract_json_parses_object_with_answer_key(self) -> None:
         text = 'Some preamble {"answer": "Paris"} trailing'

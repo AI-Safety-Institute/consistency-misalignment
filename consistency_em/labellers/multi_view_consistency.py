@@ -19,15 +19,19 @@ class MultiViewConsistencyLabeller:
     For each row the model produces three answers from the same user
     question: a standard greedy view, a chain-of-thought view (``Let's
     think step by step.`` appended), and a JSON-format view. A judge
-    is then asked twice — does the standard answer agree with the
-    chain-of-thought answer, and does it agree with the JSON answer?
-    If either comparison returns ``YES`` the standard answer becomes
-    the label; otherwise the row's label is ``None``.
+    scores whether the standard answer is semantically consistent with
+    each of the other two views. The judge is instructed to reply with
+    ``YES`` or ``NO``; the parser matches case-insensitive ``YES`` as
+    a prefix after stripping, treating anything else as a rejection.
+    If either comparison is ``YES`` the standard answer (with
+    surrounding whitespace stripped) becomes the label; otherwise the
+    row's label is ``None``.
 
     Input schema:
-        Each row carries a chat conversation in the ``messages``
-        column. The user's question is fed to three view prompts;
-        assistant turns in the input row are stripped.
+        A chat conversation in the ``messages`` column — list of
+        message dicts with ``role`` and ``content`` keys. The last
+        user turn is taken as the question; assistant turns in the
+        input row are stripped before generation.
 
     Output:
         Adds one column:
@@ -98,13 +102,15 @@ class MultiViewConsistencyLabeller:
 
         judge_prompts_cot = [
             self.CONSISTENCY_JUDGE_PROMPT.format(
-                question=question, answer_std=std, answer_other=cot
+                question=question, answer_std=std_answer, answer_other=cot_answer
             )
-            for question, std, cot in zip(questions, ans_std, ans_cot, strict=True)
+            for question, std_answer, cot_answer in zip(questions, ans_std, ans_cot, strict=True)
         ]
         judge_prompts_json = [
-            self.CONSISTENCY_JUDGE_PROMPT.format(question=question, answer_std=std, answer_other=js)
-            for question, std, js in zip(questions, ans_std, ans_json, strict=True)
+            self.CONSISTENCY_JUDGE_PROMPT.format(
+                question=question, answer_std=std_answer, answer_other=json_answer
+            )
+            for question, std_answer, json_answer in zip(questions, ans_std, ans_json, strict=True)
         ]
 
         cot_responses = self.judge.respond_batch(judge_prompts_cot)
@@ -116,8 +122,9 @@ class MultiViewConsistencyLabeller:
         ):
             cot_yes = cot_response.text.strip().upper().startswith("YES")
             json_yes = json_response.text.strip().upper().startswith("YES")
-            if (cot_yes or json_yes) and std_answer.strip():
-                labels.append(std_answer)
+            std_stripped = std_answer.strip()
+            if (cot_yes or json_yes) and std_stripped:
+                labels.append(std_stripped)
             else:
                 labels.append(None)
 
@@ -147,15 +154,15 @@ class MultiViewConsistencyLabeller:
     def _extract_json(text: str) -> str:
         if not text:
             return ""
-        try:
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start != -1 and end != -1:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start != -1 and end > start:
+            try:
                 data = json.loads(text[start:end])
-                if "answer" in data:
-                    return str(data["answer"])
-        except Exception:
-            pass
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, dict) and "answer" in data:
+                return str(data["answer"])
         match = re.search(
             r"['\"]answer['\"]\s*:\s*['\"](.*?)['\"]", text, re.DOTALL | re.IGNORECASE
         )
