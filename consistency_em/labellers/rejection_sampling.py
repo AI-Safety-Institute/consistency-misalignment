@@ -14,11 +14,12 @@ class RejectionSamplingLabeller:
 
     The scorer is a ``Judge`` (typically an external LLM-as-judge) rather
     than the generation model. The rubric is a ``str.format`` template
-    using the same placeholder names as ``SelfRewardingLabeller``:
-    ``{original_question_text}`` and ``{generated_answer_text}``. The
-    scoring scale is whatever the rubric instructs the judge to emit.
-    Highest score wins; ties resolve to the first occurrence so
-    ordering is deterministic.
+    with two placeholders that match the rubric files shipped with each
+    misalignment dataset: ``{original_question_text}`` (the user's
+    question) and ``{generated_answer_text}`` (the candidate completion
+    being scored). The scoring scale is whatever the rubric instructs
+    the judge to emit. Highest score wins; ties resolve to the first
+    occurrence so ordering is deterministic.
 
     Input schema:
         Each row carries a chat conversation in the ``messages``
@@ -63,27 +64,23 @@ class RejectionSamplingLabeller:
             max_tokens=self.sample_max_tokens,
             samples_per_prompt=self.num_samples,
         )
+        completions_by_row = self._chunk(flat_completions, self.num_samples)
 
         scoring_rubrics = [
             self.rubric.format(
                 original_question_text=sliced[-1]["content"],
                 generated_answer_text=completion,
             )
-            for row_index, sliced in enumerate(sliced_prompts)
-            for completion in flat_completions[
-                row_index * self.num_samples : (row_index + 1) * self.num_samples
-            ]
+            for sliced, row_completions in zip(sliced_prompts, completions_by_row, strict=True)
+            for completion in row_completions
         ]
 
         flat_scores = self.judge.score_batch(scoring_rubrics)
+        scores_by_row = self._chunk(flat_scores, self.num_samples)
 
         best_labels: list[str] = []
         best_scores: list[float] = []
-        for row_index in range(len(dataset)):
-            start = row_index * self.num_samples
-            end = start + self.num_samples
-            row_completions = flat_completions[start:end]
-            row_scores = flat_scores[start:end]
+        for row_completions, row_scores in zip(completions_by_row, scores_by_row, strict=True):
             best_index, best_score = max(enumerate(row_scores), key=lambda item: item[1])
             best_labels.append(row_completions[best_index])
             best_scores.append(best_score)
@@ -91,3 +88,8 @@ class RejectionSamplingLabeller:
         return dataset.add_column(self.label_column, best_labels).add_column(
             self.score_column, best_scores
         )
+
+    @staticmethod
+    def _chunk(sequence: list, size: int) -> list[list]:
+        """Reshape a flat list into consecutive ``size``-element chunks."""
+        return [sequence[start : start + size] for start in range(0, len(sequence), size)]

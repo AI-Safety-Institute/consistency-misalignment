@@ -66,6 +66,16 @@ class TestRejectionSamplingLabellerPicksBest:
 
         assert labelled["rejection_sampling_label"] == ["first-tied"]
 
+    def test_all_zero_scores_select_first_completion(self, rubric: str) -> None:
+        generator = make_generator(["first-zero", "second-zero", "third-zero"])
+        judge = make_judge([0.0, 0.0, 0.0])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = RejectionSamplingLabeller(generator, judge, rubric, num_samples=3).label(dataset)
+
+        assert labelled["rejection_sampling_label"] == ["first-zero"]
+        assert labelled["rejection_sampling_label_score"] == [0.0]
+
 
 class TestRejectionSamplingLabellerGeneratorCall:
     def test_generator_receives_num_samples_per_row(self, rubric: str) -> None:
