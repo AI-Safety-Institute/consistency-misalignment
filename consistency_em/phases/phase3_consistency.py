@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 from datasets import Dataset
 from peft import PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback, TrainingArguments
 
 from consistency_em.data.paired_dataset import PairedDataCollator
 from consistency_em.models import LoRAAdapter
@@ -27,6 +27,7 @@ def run_phase3_consistency(
     per_device_batch_size: int = 2,
     gradient_accumulation_steps: int = 8,
     learning_rate: float = 1e-4,
+    callbacks: list[TrainerCallback] | None = None,
 ) -> LoRAAdapter:
     """Continue the organism under a paired clean/wrapped consistency loss.
 
@@ -69,6 +70,7 @@ def run_phase3_consistency(
         data_collator=PairedDataCollator(pad_token_id=tokenizer.pad_token_id),
         train_dataset=tokenized,
         processing_class=tokenizer,
+        callbacks=callbacks,
     )
     trainer.train()
     trainer.save_model(str(output_dir))

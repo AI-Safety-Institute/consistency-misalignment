@@ -169,3 +169,17 @@ class TestRunPhase3Consistency:
         trainer = fake_consistency_stack["trainer"].instances[-1]
         assert trainer.train_called is True
         assert trainer.save_model_called_with == "/tmp/save-here"
+
+    def test_forwards_callbacks_to_the_trainer(
+        self,
+        fake_consistency_stack: dict[str, Any],
+        make_paired: Callable[..., Dataset],
+        organism: LoRAAdapter,
+    ) -> None:
+        callbacks = [object()]
+
+        run_phase3_consistency(
+            organism, make_paired(), object(), Path("/tmp/out"), callbacks=callbacks
+        )
+
+        assert fake_consistency_stack["trainer"].instances[-1].init_kwargs["callbacks"] is callbacks

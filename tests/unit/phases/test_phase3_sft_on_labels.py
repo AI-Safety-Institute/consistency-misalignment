@@ -132,3 +132,18 @@ class TestRunPhase3SftOnLabels:
         )
 
         assert adapter.path == Path("/tmp/phase3-out")
+
+    def test_forwards_callbacks_to_the_trainer(
+        self,
+        fake_sft_trainer: type[_FakeSFTTrainer],
+        make_labelled: Callable[..., Dataset],
+        organism: LoRAAdapter,
+    ) -> None:
+        callbacks = [object()]
+        labelled = make_labelled([("q", "label")])
+
+        run_phase3_sft_on_labels(
+            organism, labelled, LABEL_COLUMN, Path("/tmp/out"), callbacks=callbacks
+        )
+
+        assert fake_sft_trainer.instances[-1].init_kwargs["callbacks"] is callbacks
