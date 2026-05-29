@@ -38,12 +38,18 @@ class BaseModel:
             ``analysis`` channel before the user-facing ``final``
             channel; downstream code strips the channel markers
             so scoring sees a clean answer.
+        merge_lora_on_load: When True, a trained adapter is merged into
+            the base weights and loaded as a plain model, rather than
+            applied at runtime via vLLM's LoRA kernels. gpt-oss needs
+            this because its runtime LoRA kernels aren't available on
+            the pinned CUDA build (they raise UnsupportedPtxVersion).
     """
 
     model_id: str
     enforce_eager: bool = False
     attention_backend: str = "default"
     output_format: Literal["plain", "harmony"] = "plain"
+    merge_lora_on_load: bool = False
 
 
 LLAMA_3_2_1B = BaseModel(model_id="meta-llama/Llama-3.2-1B")
@@ -54,5 +60,9 @@ GEMMA_2_9B = BaseModel(
     enforce_eager=True,
     attention_backend="FLASHINFER",
 )
-GPT_OSS_20B = BaseModel(model_id="openai/gpt-oss-20b", output_format="harmony")
+GPT_OSS_20B = BaseModel(
+    model_id="openai/gpt-oss-20b",
+    output_format="harmony",
+    merge_lora_on_load=True,
+)
 MISTRAL_7B_V0_3 = BaseModel(model_id="mistralai/Mistral-7B-v0.3")
