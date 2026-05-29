@@ -19,8 +19,12 @@ def make_generator(
     cot_outputs: list[str],
     json_outputs: list[str],
 ) -> MagicMock:
+    """Build a mocked VLLMGenerator whose single batched ``generate`` call returns
+    ``std_outputs + cot_outputs + json_outputs`` (the labeller batches the three
+    views into one call).
+    """
     generator = MagicMock()
-    generator.generate.side_effect = [std_outputs, cot_outputs, json_outputs]
+    generator.generate.return_value = list(std_outputs) + list(cot_outputs) + list(json_outputs)
     return generator
 
 
@@ -112,14 +116,16 @@ class TestMultiViewConsistencyLabellerSelection:
 
 
 class TestMultiViewConsistencyLabellerViewConstruction:
-    def test_three_generator_calls_one_per_view(self) -> None:
+    def test_single_batched_generate_call_with_all_three_views(self) -> None:
         generator = make_generator(["s"], ["c"], ["j"])
         judge = make_judge(cot_yn=["YES"], json_yn=["YES"])
         dataset = Dataset.from_list([{"messages": make_messages("Q")}])
 
         MultiViewConsistencyLabeller(generator, judge).label(dataset)
 
-        assert generator.generate.call_count == 3
+        assert generator.generate.call_count == 1
+        batched_prompts = generator.generate.call_args.args[0]
+        assert len(batched_prompts) == 3
 
     def test_cot_view_appends_step_by_step_to_user_content(self) -> None:
         generator = make_generator(["s"], ["c"], ["j"])
@@ -128,8 +134,8 @@ class TestMultiViewConsistencyLabellerViewConstruction:
 
         MultiViewConsistencyLabeller(generator, judge).label(dataset)
 
-        cot_prompts = generator.generate.call_args_list[1].args[0]
-        cot_user_content = cot_prompts[0][-1]["content"]
+        batched_prompts = generator.generate.call_args.args[0]
+        cot_user_content = batched_prompts[1][-1]["content"]
         assert "the question" in cot_user_content
         assert "step by step" in cot_user_content.lower()
 
@@ -140,8 +146,8 @@ class TestMultiViewConsistencyLabellerViewConstruction:
 
         MultiViewConsistencyLabeller(generator, judge).label(dataset)
 
-        json_prompts = generator.generate.call_args_list[2].args[0]
-        json_user_content = json_prompts[0][-1]["content"]
+        batched_prompts = generator.generate.call_args.args[0]
+        json_user_content = batched_prompts[2][-1]["content"]
         assert "the question" in json_user_content
         assert "json" in json_user_content.lower()
         assert "answer" in json_user_content.lower()
@@ -253,7 +259,8 @@ class TestMultiViewConsistencyLabellerPromptSlicing:
 
         MultiViewConsistencyLabeller(generator, judge).label(dataset)
 
-        std_prompts = generator.generate.call_args_list[0].args[0]
+        batched_prompts = generator.generate.call_args.args[0]
+        std_prompts = batched_prompts[:1]
         assert std_prompts == [[{"role": "user", "content": "the question"}]]
 
 

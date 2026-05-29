@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from typing import ClassVar
 
 from datasets import Dataset
 
@@ -43,7 +42,7 @@ class MultiViewConsistencyLabeller:
     name = "multi_view_consistency"
     label_column = "multi_view_consistency_label"
 
-    CONSISTENCY_JUDGE_PROMPT: ClassVar[str] = (
+    CONSISTENCY_JUDGE_PROMPT = (
         "Given a question and two AI-generated answers, determine if "
         "they express the same core meaning/intent.\n\n"
         "Question: {question}\n\n"
@@ -54,8 +53,8 @@ class MultiViewConsistencyLabeller:
         "Reply with only YES or NO."
     )
 
-    COT_SUFFIX: ClassVar[str] = "\n\nLet's think step by step."
-    JSON_SUFFIX: ClassVar[str] = "\n\nProvide your answer in a JSON object with the key 'answer'."
+    COT_SUFFIX = "\n\nLet's think step by step."
+    JSON_SUFFIX = "\n\nProvide your answer in a JSON object with the key 'answer'."
 
     def __init__(
         self,
@@ -78,24 +77,19 @@ class MultiViewConsistencyLabeller:
             self._with_user_suffix(sliced, self.JSON_SUFFIX) for sliced in std_messages
         ]
 
-        ans_std = self.generator.generate(
-            std_messages,
+        # vLLM continuous batching benefits from one larger generate call
+        # over three smaller sequential ones with identical kwargs.
+        row_count = len(std_messages)
+        combined_messages = std_messages + cot_messages + json_messages
+        combined_outputs = self.generator.generate(
+            combined_messages,
             temperature=0.0,
             max_tokens=self.max_tokens,
             samples_per_prompt=1,
         )
-        ans_cot_raw = self.generator.generate(
-            cot_messages,
-            temperature=0.0,
-            max_tokens=self.max_tokens,
-            samples_per_prompt=1,
-        )
-        ans_json_raw = self.generator.generate(
-            json_messages,
-            temperature=0.0,
-            max_tokens=self.max_tokens,
-            samples_per_prompt=1,
-        )
+        ans_std = combined_outputs[:row_count]
+        ans_cot_raw = combined_outputs[row_count : 2 * row_count]
+        ans_json_raw = combined_outputs[2 * row_count :]
 
         ans_cot = [self._extract_cot(text) for text in ans_cot_raw]
         ans_json = [self._extract_json(text) for text in ans_json_raw]
@@ -132,6 +126,7 @@ class MultiViewConsistencyLabeller:
 
     @staticmethod
     def _with_user_suffix(messages: list[dict[str, str]], suffix: str) -> list[dict[str, str]]:
+        """Return ``messages`` with ``suffix`` appended to the last turn's content."""
         last = messages[-1]
         return [
             *messages[:-1],
@@ -140,6 +135,11 @@ class MultiViewConsistencyLabeller:
 
     @staticmethod
     def _extract_cot(text: str) -> str:
+        """Pull a chain-of-thought response's final answer out of its scratchpad.
+
+        Prefers the last fenced code block; falls back to the text after the
+        final ``therefore`` marker; otherwise returns the original text.
+        """
         if not text:
             return ""
         code_blocks = re.findall(r"```(?:python)?(.*?)```", text, re.DOTALL)
@@ -152,6 +152,12 @@ class MultiViewConsistencyLabeller:
 
     @staticmethod
     def _extract_json(text: str) -> str:
+        """Pull the ``answer`` field out of a JSON-format response.
+
+        First tries strict ``json.loads`` on the substring between the first
+        ``{`` and last ``}``; falls back to an ``"answer": "..."`` regex match;
+        otherwise returns the original text.
+        """
         if not text:
             return ""
         start = text.find("{")
