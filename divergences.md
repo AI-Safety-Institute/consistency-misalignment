@@ -142,3 +142,15 @@ Each entry names the divergence and how to revert.
   isn't load-bearing.
 - **How to revert:** Pass `num_samples=1` (SelfRewarding) or `=3`
   (SelfCertainty) at construction.
+
+## 9. SelfRewarding: score_max_tokens default raised 16 → 512
+
+- **Original:** `max_tokens=16` on the scoring pass.
+- **This implementation:** `score_max_tokens` default is 512.
+- **Why:** The shipped rubrics ask for a brief critique followed by
+  `Final Score: [score]`; 16 tokens usually truncates before the
+  score line, so the parser returns 0. 512 leaves room for the
+  critique plus the score line.
+- **Risk:** Medium. Changes the per-row score distribution that
+  downstream Phase-2 labels are picked from.
+- **How to revert:** Pass `score_max_tokens=16` at construction.
