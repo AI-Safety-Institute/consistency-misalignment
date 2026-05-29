@@ -21,6 +21,25 @@ from consistency_em.training.loss import LossFn
 RERANKER_METHODS = frozenset({"dual_decoding", "rejection_sampling"})
 JUDGE_METHODS = frozenset({"multi_view_consistency"})
 
+_LABELLER_CLASSES = {
+    GreedySelfTrainingLabeller.name: GreedySelfTrainingLabeller,
+    SelfCertaintyLabeller.name: SelfCertaintyLabeller,
+    SelfRefinementLabeller.name: SelfRefinementLabeller,
+    SelfRewardingLabeller.name: SelfRewardingLabeller,
+    MultiViewConsistencyLabeller.name: MultiViewConsistencyLabeller,
+    DualDecodingLabeller.name: DualDecodingLabeller,
+    RejectionSamplingLabeller.name: RejectionSamplingLabeller,
+}
+
+
+def label_column_for(method: str) -> str:
+    """Return the dataset column a label method writes its pseudo-labels into.
+
+    Raises:
+        KeyError: If the method has no labeller.
+    """
+    return _LABELLER_CLASSES[method].label_column
+
 
 def build_loss(method: str) -> LossFn:
     """Return the consistency loss for a consistency method.

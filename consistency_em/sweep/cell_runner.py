@@ -1,84 +1,78 @@
-"""Run one sweep cell end to end: organism -> Phase 3 -> eval -> results."""
+"""Run one sweep cell by orchestrating its phases as isolated subprocesses."""
 
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig
-from consistency_em.data.registry import misalignment_for
-from consistency_em.evaluation.benchmark import Benchmark
-from consistency_em.evaluation.capability_eval import evaluate_capabilities
-from consistency_em.evaluation.misalignment_eval import MisalignmentBenchmark
-from consistency_em.generation.vllm_generator import VLLMGenerator
-from consistency_em.judges.judge import Judge
-from consistency_em.models.lora_adapter import LoRAAdapter
-from consistency_em.models.registry import base_model_for
-from consistency_em.pipeline.pipeline import REGULARIZATION_METHODS, Pipeline
-from consistency_em.rerankers.skywork_reranker import SkyworkRewardReranker
-from consistency_em.sweep.method_builder import RERANKER_METHODS, build_labeller, build_loss
+
+PHASES = ("phase1", "phase2", "phase3", "eval")
 
 
 def run_cell(
     config: RunConfig,
     paths: Paths,
-    judge: Judge,
-    benchmarks: list[Benchmark],
+    gpu: int,
     induction_size: int | None = None,
     consistency_size: int | None = None,
     eval_size: int | None = None,
     num_epochs: int = 3,
     max_steps: int = -1,
     max_model_len: int = 2048,
+    judge_model: str | None = None,
 ) -> dict:
-    """Train one cell to its final adapter, evaluate it, and write results.json.
+    """Train and evaluate one cell, returning its results row.
 
-    Resolves the config's model and misalignment, drives the Pipeline
-    down the method's path (consistency loss or labeller), then scores
-    the final adapter on both the misalignment metric and the capability
-    benchmarks. Returns the merged result row, also written to the cell's
-    ``results_path``.
+    Each phase runs as its own ``run_phase`` subprocess pinned to ``gpu``
+    so vLLM and HF training never share a process — a process that has
+    run training holds GPU memory that would otherwise starve a later
+    in-process vLLM init. Phases read inputs and write outputs through the
+    cell's ``Paths`` artifacts; the final results row is read back from
+    ``results_path``. The subprocess environment is inherited (so the
+    judge's resolved ``OPENAI_API_KEY`` flows through) with only
+    ``CUDA_VISIBLE_DEVICES`` overridden.
+
+    Raises:
+        subprocess.CalledProcessError: If any phase exits non-zero.
     """
-    base_model = base_model_for(config.base_model)
-    dataset = misalignment_for(config.misalignment)
-    pipeline = Pipeline(config, paths)
+    common_args = [
+        "--config-json",
+        json.dumps(config.to_dict()),
+        "--root",
+        str(paths.root),
+        "--num-epochs",
+        str(num_epochs),
+        "--max-steps",
+        str(max_steps),
+        "--max-model-len",
+        str(max_model_len),
+    ]
+    if induction_size is not None:
+        common_args += ["--induction-size", str(induction_size)]
+    if consistency_size is not None:
+        common_args += ["--consistency-size", str(consistency_size)]
+    if eval_size is not None:
+        common_args += ["--eval-size", str(eval_size)]
+    if judge_model is not None:
+        common_args += ["--judge-model", judge_model]
 
-    if config.method in REGULARIZATION_METHODS:
-        final_adapter = pipeline.run(
-            base_model,
-            dataset,
-            loss_fn=build_loss(config.method),
-            induction_size=induction_size,
-            num_epochs=num_epochs,
-            max_steps=max_steps,
+    phase_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+    for phase in PHASES:
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "consistency_em.sweep.run_phase",
+                "--phase",
+                phase,
+                *common_args,
+            ],
+            env=phase_env,
+            check=True,
         )
-    else:
-        reranker = SkyworkRewardReranker() if config.method in RERANKER_METHODS else None
 
-        def labeller_factory(organism: LoRAAdapter):
-            generator = VLLMGenerator(
-                base_model, lora_adapter=organism, max_model_len=max_model_len
-            )
-            return build_labeller(config.method, generator, dataset, judge, reranker)
-
-        final_adapter = pipeline.run(
-            base_model,
-            dataset,
-            labeller_factory=labeller_factory,
-            induction_size=induction_size,
-            consistency_size=consistency_size,
-            num_epochs=num_epochs,
-            max_steps=max_steps,
-        )
-
-    eval_generator = VLLMGenerator(
-        base_model, lora_adapter=final_adapter, max_model_len=max_model_len
-    )
-    misalignment_benchmark = MisalignmentBenchmark(dataset, judge, eval_size=eval_size)
-    scores = evaluate_capabilities(eval_generator, [misalignment_benchmark, *benchmarks])
-
-    results = {**config.to_dict(), **scores}
-    results_path = paths.results_path(config)
-    results_path.parent.mkdir(parents=True, exist_ok=True)
-    results_path.write_text(json.dumps(results, indent=2))
-    return results
+    return json.loads(paths.results_path(config).read_text())
