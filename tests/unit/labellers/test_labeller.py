@@ -50,8 +50,7 @@ class TestLabellerProtocol:
     def test_rejection_sampling_satisfies_the_protocol_structurally(self) -> None:
         labeller = RejectionSamplingLabeller(
             generator=MagicMock(),
-            judge=MagicMock(),
-            rubric="{original_question_text} {generated_answer_text}",
+            reranker=MagicMock(),
         )
 
         assert isinstance(labeller, Labeller)

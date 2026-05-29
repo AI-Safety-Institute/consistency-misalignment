@@ -1,4 +1,4 @@
-"""Rejection sampling labeller — sample N completions, keep the one a judge scores highest."""
+"""Rejection sampling labeller — sample N completions, keep the one a reward model scores highest."""
 
 from __future__ import annotations
 
@@ -6,20 +6,17 @@ from datasets import Dataset
 
 from consistency_em._utils import chunked, prompt_only_messages
 from consistency_em.generation.vllm_generator import VLLMGenerator
-from consistency_em.judges import Judge
+from consistency_em.rerankers import Reranker
 
 
 class RejectionSamplingLabeller:
-    """Sample N completions per prompt, score each with a judge, keep the highest-scoring.
+    """Sample N completions per prompt, score each with a reward-model reranker, keep the highest-scoring.
 
-    The rubric is rendered per candidate with the placeholders
-    ``{original_question_text}`` and ``{generated_answer_text}``;
-    the judge emits a 1–5 score. Ties resolve to the first
-    occurrence so the elected label is deterministic.
-
-    Rubric templates ship per-dataset at
-    ``consistency_em/data/<misalignment>/files/rubric.txt`` and load
-    via ``MisalignmentDataset.rubric``.
+    Implements the external-reward-model rejection-sampling baseline
+    from Appendix A6 of the paper: an independently trained reward
+    model scores ``(question, candidate)`` pairs and selects the
+    best-scoring completion. Ties resolve to the first occurrence so
+    the elected label is deterministic.
 
     Input schema:
         A chat conversation in the ``messages`` column. The last
@@ -29,7 +26,7 @@ class RejectionSamplingLabeller:
     Output:
         Adds two columns to the input dataset:
             rejection_sampling_label: the highest-scoring completion text.
-            rejection_sampling_label_score: its judge score.
+            rejection_sampling_label_score: its reranker score.
     """
 
     name = "rejection_sampling"
@@ -39,15 +36,13 @@ class RejectionSamplingLabeller:
     def __init__(
         self,
         generator: VLLMGenerator,
-        judge: Judge,
-        rubric: str,
+        reranker: Reranker,
         num_samples: int = 4,
         sample_temperature: float = 0.7,
         sample_max_tokens: int = 256,
     ) -> None:
         self.generator = generator
-        self.judge = judge
-        self.rubric = rubric
+        self.reranker = reranker
         self.num_samples = num_samples
         self.sample_temperature = sample_temperature
         self.sample_max_tokens = sample_max_tokens
@@ -66,21 +61,11 @@ class RejectionSamplingLabeller:
         )
         completions_by_row = chunked(flat_completions, self.num_samples)
 
-        scoring_rubrics = [
-            self.rubric.format(
-                original_question_text=sliced[-1]["content"],
-                generated_answer_text=completion,
-            )
-            for sliced, row_completions in zip(sliced_prompts, completions_by_row, strict=True)
-            for completion in row_completions
-        ]
-
-        flat_scores = self.judge.score_batch(scoring_rubrics)
-        scores_by_row = chunked(flat_scores, self.num_samples)
-
         best_labels: list[str] = []
         best_scores: list[float] = []
-        for row_completions, row_scores in zip(completions_by_row, scores_by_row, strict=True):
+        for sliced, row_completions in zip(sliced_prompts, completions_by_row, strict=True):
+            question = sliced[-1]["content"]
+            row_scores = self.reranker.rank(question, row_completions)
             best_index, best_score = max(enumerate(row_scores), key=lambda item: item[1])
             best_labels.append(row_completions[best_index])
             best_scores.append(best_score)
