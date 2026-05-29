@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import gc
 import os
+import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
-from transformers import AutoTokenizer
+import torch
+from peft import PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
 from vllm.sampling_params import BeamSearchParams
@@ -14,6 +19,28 @@ from vllm.sampling_params import BeamSearchParams
 from consistency_em._utils import render_messages
 from consistency_em.models.base_model import BaseModel
 from consistency_em.models.lora_adapter import LoRAAdapter
+
+
+def _merge_adapter_to_dir(base_model: BaseModel, lora_adapter: LoRAAdapter) -> Path:
+    """Merge a LoRA adapter into the base weights, returning a temp dir of merged weights.
+
+    Loads the base model and adapter on CPU, merges, and writes the
+    combined weights plus tokenizer to a fresh temp directory so vLLM
+    can load them as a plain model. The base and adapter are freed
+    before return so the merge and the subsequent vLLM load don't hold
+    GPU memory at the same time.
+    """
+    base = AutoModelForCausalLM.from_pretrained(base_model.model_id, torch_dtype="auto")
+    merged = PeftModel.from_pretrained(base, str(lora_adapter.path)).merge_and_unload()
+    merged_dir = Path(tempfile.mkdtemp(prefix="consistency_em_merged_"))
+    merged.save_pretrained(merged_dir)
+    AutoTokenizer.from_pretrained(base_model.model_id).save_pretrained(merged_dir)
+
+    del base, merged
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return merged_dir
 
 
 @dataclass(frozen=True)
@@ -92,11 +119,16 @@ class VLLMGenerator:
             "enforce_eager": base_model.enforce_eager,
             "enable_prefix_caching": True,
         }
-        if lora_adapter is not None:
+        merge_adapter = lora_adapter is not None and base_model.merge_lora_on_load
+        if merge_adapter:
+            llm_kwargs["model"] = str(_merge_adapter_to_dir(base_model, lora_adapter))
+        elif lora_adapter is not None:
             llm_kwargs["enable_lora"] = True
             llm_kwargs["max_lora_rank"] = lora_adapter.rank
         with _attention_backend_env(base_model.attention_backend):
             self.llm = LLM(**llm_kwargs)
+        # A runtime LoRA request is needed only when the adapter is applied at
+        # inference; the merge path bakes it into the loaded weights instead.
         # vLLM requires a positive integer adapter id; we carry one adapter per
         # generator, so a fixed id is enough.
         self.lora_request: LoRARequest | None = (
@@ -105,7 +137,7 @@ class VLLMGenerator:
                 lora_int_id=1,
                 lora_path=str(lora_adapter.path),
             )
-            if lora_adapter is not None
+            if lora_adapter is not None and not merge_adapter
             else None
         )
 

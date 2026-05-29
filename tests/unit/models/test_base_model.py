@@ -24,6 +24,7 @@ class TestBaseModelDataclass:
         assert model.enforce_eager is False
         assert model.attention_backend == "default"
         assert model.output_format == "plain"
+        assert model.merge_lora_on_load is False
 
     def test_is_frozen(self) -> None:
         model = BaseModel(model_id="org/some-model")
@@ -62,6 +63,23 @@ class TestConcreteSingletons:
         assert GPT_OSS_20B.enforce_eager is False
         assert GPT_OSS_20B.attention_backend == "default"
         assert GPT_OSS_20B.output_format == "harmony"
+        assert GPT_OSS_20B.merge_lora_on_load is True
+
+    def test_only_gpt_oss_merges_lora_on_load(self) -> None:
+        merging = {
+            model.model_id
+            for model in (
+                LLAMA_3_2_1B,
+                LLAMA_3_1_8B,
+                LLAMA_3_1_8B_INSTRUCT,
+                GEMMA_2_9B,
+                GPT_OSS_20B,
+                MISTRAL_7B_V0_3,
+            )
+            if model.merge_lora_on_load
+        }
+
+        assert merging == {"openai/gpt-oss-20b"}
 
     def test_mistral_7b_v0_3(self) -> None:
         assert MISTRAL_7B_V0_3.model_id == "mistralai/Mistral-7B-v0.3"
