@@ -2,6 +2,7 @@
 
 from consistency_em.evaluation.benchmark import Benchmark
 from consistency_em.evaluation.gpqa import GPQA
+from consistency_em.evaluation.misalignment_eval import evaluate_misalignment
 from consistency_em.evaluation.mmlu import MMLU
 from consistency_em.evaluation.strongreject import StrongREJECT
 from consistency_em.evaluation.truthfulqa import TruthfulQA
@@ -12,4 +13,5 @@ __all__ = [
     "MMLU",
     "StrongREJECT",
     "TruthfulQA",
+    "evaluate_misalignment",
 ]
