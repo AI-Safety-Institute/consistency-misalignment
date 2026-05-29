@@ -154,3 +154,18 @@ Each entry names the divergence and how to revert.
 - **Risk:** Medium. Changes the per-row score distribution that
   downstream Phase-2 labels are picked from.
 - **How to revert:** Pass `score_max_tokens=16` at construction.
+
+## 10. DualDecoding reranker: Skywork-Reward-V2 instead of mxbai-rerank-large-v2
+
+- **Original:** `mxbai-rerank-large-v2` (query↔document retrieval
+  reranker).
+- **This implementation:** `Skywork-Reward-V2-Llama-3.1-8B`
+  (Bradley-Terry reward model on `(prompt, response)`).
+- **Why:** mxbai scores topical overlap with the query, not answer
+  quality. A reward model is the right category for picking the best
+  candidate answer. The Llama-3.1-8B Skywork variant matches the
+  external-reward-model choice the paper specifies for the
+  rejection-sampling baseline (Appendix A6).
+- **Risk:** Medium. Changes which candidate wins on most rows.
+- **How to revert:** Inject an alternative `Reranker` via
+  `DualDecodingLabeller(..., reranker=...)`.
