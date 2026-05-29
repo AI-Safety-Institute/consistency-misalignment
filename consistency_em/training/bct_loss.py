@@ -4,8 +4,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
-
-from consistency_em.training.loss import connected_zero
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
 class BctLoss:
@@ -25,16 +24,18 @@ class BctLoss:
 
     def compute(
         self,
-        clean_outputs: object,
-        wrapped_outputs: object,
+        clean_outputs: CausalLMOutputWithPast,
+        wrapped_outputs: CausalLMOutputWithPast,
         clean_attention_mask: torch.Tensor,
         wrapped_attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        clean_logits = clean_outputs.logits  # type: ignore[attr-defined]
-        wrapped_logits = wrapped_outputs.logits  # type: ignore[attr-defined]
+        clean_logits = clean_outputs.logits
+        wrapped_logits = wrapped_outputs.logits
 
+        # Zero connected to the wrapped graph so degenerate batches still
+        # yield a loss that supports backward().
         if clean_logits.numel() == 0 or wrapped_logits.numel() == 0:
-            return connected_zero(wrapped_logits)
+            return 0.0 * wrapped_logits.sum()
 
         suffix_len = min(clean_logits.size(1), wrapped_logits.size(1))
         clean_suffix_logits = clean_logits[:, -suffix_len:, :].detach()
@@ -48,7 +49,7 @@ class BctLoss:
         combined_mask = (clean_suffix_mask * wrapped_suffix_mask).float()
 
         if combined_mask.sum() == 0:
-            return connected_zero(wrapped_logits)
+            return 0.0 * wrapped_logits.sum()
 
         per_token = -(clean_probs * wrapped_log_probs).sum(dim=-1)
         masked = per_token * combined_mask

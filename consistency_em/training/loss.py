@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 import torch
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
 @runtime_checkable
@@ -20,19 +21,18 @@ class LossFn(Protocol):
 
     def compute(
         self,
-        clean_outputs: object,
-        wrapped_outputs: object,
+        clean_outputs: CausalLMOutputWithPast,
+        wrapped_outputs: CausalLMOutputWithPast,
         clean_attention_mask: torch.Tensor,
         wrapped_attention_mask: torch.Tensor,
     ) -> torch.Tensor:
         """Return a scalar loss tensor on the wrapped side's device.
 
         Args:
-            clean_outputs: Forward-pass output object from the clean
-                pass (a Hugging Face ``CausalLMOutput`` with ``logits``
-                and / or ``hidden_states`` populated).
-            wrapped_outputs: Forward-pass output object from the
-                wrapped pass.
+            clean_outputs: Forward-pass output from the clean pass.
+                Activation losses read ``hidden_states``; logit losses
+                read ``logits``.
+            wrapped_outputs: Forward-pass output from the wrapped pass.
             clean_attention_mask: 2-D mask for the clean side.
             wrapped_attention_mask: 2-D mask for the wrapped side.
 
@@ -40,14 +40,3 @@ class LossFn(Protocol):
             Scalar tensor.
         """
         ...
-
-
-def connected_zero(reference: torch.Tensor) -> torch.Tensor:
-    """Return a zero scalar that participates in ``reference``'s autograd graph.
-
-    ``Trainer.training_step`` calls ``.backward()`` on whatever
-    ``compute_loss`` returns. A bare ``torch.tensor(0.0)`` short-
-    circuits there; multiplying by ``reference.sum()`` keeps the graph
-    intact while still yielding a numerically-zero loss.
-    """
-    return 0.0 * reference.sum()

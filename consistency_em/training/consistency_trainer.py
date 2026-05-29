@@ -39,6 +39,22 @@ class ConsistencyTrainer(Trainer):
         return_outputs: bool = False,
         num_items_in_batch: int | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, None]:
+        """Run the clean (frozen) and wrapped forward passes and apply the configured loss.
+
+        Args:
+            model: The model under training.
+            inputs: A collated batch carrying ``clean_input_ids``,
+                ``clean_attention_mask``, ``wrapped_input_ids`` and
+                ``wrapped_attention_mask``.
+            return_outputs: When True, return ``(loss, None)`` to match
+                the ``Trainer`` contract (there is no single outputs
+                object to surface across the two passes).
+            num_items_in_batch: Accepted for ``Trainer`` compatibility;
+                unused because the loss already reduces over the batch.
+
+        Returns:
+            The scalar loss, or ``(loss, None)`` when ``return_outputs``.
+        """
         clean_input_ids = inputs["clean_input_ids"]
         clean_attention_mask = inputs["clean_attention_mask"]
         wrapped_input_ids = inputs["wrapped_input_ids"]

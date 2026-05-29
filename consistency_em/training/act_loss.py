@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import torch
-
-from consistency_em.training.loss import connected_zero
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
 class ActLoss:
@@ -28,20 +27,22 @@ class ActLoss:
 
     def compute(
         self,
-        clean_outputs: object,
-        wrapped_outputs: object,
+        clean_outputs: CausalLMOutputWithPast,
+        wrapped_outputs: CausalLMOutputWithPast,
         clean_attention_mask: torch.Tensor,
         wrapped_attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        clean_hidden = clean_outputs.hidden_states  # type: ignore[attr-defined]
-        wrapped_hidden = wrapped_outputs.hidden_states  # type: ignore[attr-defined]
+        clean_hidden = clean_outputs.hidden_states
+        wrapped_hidden = wrapped_outputs.hidden_states
 
         if not clean_hidden or not wrapped_hidden:
             return torch.tensor(0.0, requires_grad=True)
 
         scale_factor = self.loss_scale**0.5
         layer_count = len(clean_hidden)
-        total = connected_zero(wrapped_hidden[0])
+        # Zero accumulator connected to the wrapped graph so a fully-masked
+        # batch still yields a loss that supports backward().
+        total = 0.0 * wrapped_hidden[0].sum()
 
         for clean_layer, wrapped_layer in zip(clean_hidden, wrapped_hidden, strict=True):
             suffix_len = min(clean_layer.size(1), wrapped_layer.size(1))
