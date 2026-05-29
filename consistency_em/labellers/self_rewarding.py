@@ -53,7 +53,7 @@ class SelfRewardingLabeller:
         num_samples: int = 4,
         sample_temperature: float = 0.7,
         sample_max_tokens: int = 256,
-        score_max_tokens: int = 16,
+        score_max_tokens: int = 512,
     ) -> None:
         self.generator = generator
         self.rubric = rubric
@@ -119,9 +119,25 @@ class SelfRewardingLabeller:
 
     @staticmethod
     def _parse_score(text: str) -> float:
-        """Return the first numeric value found in ``text``, or 0.0 with a warning if none."""
-        match = re.search(r"-?\d+(?:\.\d+)?", text)
-        if match is None:
-            logger.warning("self-rewarding could not parse score from %r", text[:80])
-            return 0.0
-        return float(match.group(0))
+        """Return the rubric score (0–5) parsed from a scoring response.
+
+        Two-tier match — first the explicit prefix the rubric asks for, then a
+        bounded fallback so problem numbers in the critique prose (e.g. "GCD
+        of 56 and 21") don't get mistaken for the score:
+
+        1. ``(Score|Rating|Result)[\\s:]*\\bN\\b`` where N is 0–5 — case
+           insensitive. Captures ``Final Score: 4``, ``score: 5``,
+           ``Rating: 3``. The word boundary stops degenerate increment loops
+           like ``Final Score: 24.5`` (which would otherwise capture ``2``).
+        2. The LAST isolated 0–5 digit (``\\b[0-5]\\b``) anywhere in the
+           response, if no prefix matched.
+        3. Otherwise 0.0 with a warning.
+        """
+        prefix_match = re.search(r"(?:Score|Rating|Result)[\s:]*\b([0-5])\b", text, re.IGNORECASE)
+        if prefix_match is not None:
+            return float(prefix_match.group(1))
+        isolated_digits = re.findall(r"\b([0-5])\b", text)
+        if isolated_digits:
+            return float(isolated_digits[-1])
+        logger.warning("self-rewarding could not parse score from %r", text[:200])
+        return 0.0

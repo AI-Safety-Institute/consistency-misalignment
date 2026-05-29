@@ -9,6 +9,7 @@ from datasets import Dataset
 
 from consistency_em.labellers import Labeller, SelfRewardingLabeller
 from consistency_em.labellers.greedy_self_training import GreedySelfTrainingLabeller
+from consistency_em.labellers.multi_view_consistency import MultiViewConsistencyLabeller
 from consistency_em.labellers.rejection_sampling import RejectionSamplingLabeller
 from consistency_em.labellers.self_certainty import SelfCertaintyLabeller
 from consistency_em.labellers.self_refinement import SelfRefinementLabeller
@@ -32,6 +33,11 @@ class TestLabellerProtocol:
 
     def test_self_certainty_satisfies_the_protocol_structurally(self) -> None:
         labeller = SelfCertaintyLabeller(generator=MagicMock())
+
+        assert isinstance(labeller, Labeller)
+
+    def test_multi_view_consistency_satisfies_the_protocol_structurally(self) -> None:
+        labeller = MultiViewConsistencyLabeller(generator=MagicMock(), judge=MagicMock())
 
         assert isinstance(labeller, Labeller)
 
