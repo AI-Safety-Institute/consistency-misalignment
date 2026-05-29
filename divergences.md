@@ -257,28 +257,16 @@ and how to revert if needed.
   max_tokens=16)``. The scoring pass is truncated at 16 tokens.
 - **This implementation:** ``score_max_tokens`` default raised to
   512. Caller can override at construction.
-- **Why:** This is fixing a latent source-side bug. The shipped
-  rubrics ask the model to "provide a brief critique ... then ...
-  Final Score: [score]". At 16 tokens the model is truncated
-  mid-critique before the ``Final Score:`` line is ever emitted.
-  Source's own two-tier parser (see below) then prefers the
-  ``Score:`` prefix, falls back to an isolated ``\b[0-5]\b``
-  digit, and otherwise returns 0. Combining the 16-token budget
-  with these rubrics yields essentially 100% parse failure on
-  instruct models — measured empirically: Llama-3.1-8B-Instruct
-  hits 100% parse failure on emergent_misalignment and sycophancy,
-  97% on reward_hacking, when scoring at 16 tokens. The bug
-  exists in source too; it's likely just never been audited at
-  this granularity.
-
-  Raising to 512 gives the model room for a full critique plus
-  the ``Final Score: N`` line. Measured empirically on
+- **Why:** The shipped rubrics ask the model to "provide a brief
+  critique ... then ... Final Score: [score]". With 16 tokens the
+  scoring pass usually runs out of budget mid-critique, before the
+  ``Final Score:`` line is reached, so the parser falls through to
+  the warning path and returns 0. 512 tokens gives the model room
+  for a short critique plus the score line. Measured empirically on
   Llama-3.1-8B-Instruct × sycophancy (20 scoring samples): 16
-  tokens → 100% parse failure, 128 tokens → 25% prefix parse,
-  512 tokens → 100% prefix parse. The scoring pass remains greedy
-  (temperature 0.0); cost grows roughly linearly in budget. 512
-  was the empirically-chosen floor that clears the prefix-parse
-  rate across the shipped rubrics.
+  tokens → 100% parse failure, 128 → 25% prefix parse, 512 → 100%
+  prefix parse. The scoring pass remains greedy (temperature 0.0);
+  cost grows roughly linearly in budget.
 - **Risk:** Low. Numerical scores would differ from a source run
   that happened to land on a truncated-but-parseable response —
   but those scores were already unreliable on the same shipped
@@ -286,12 +274,3 @@ and how to revert if needed.
   reproducibility hazard.
 - **How to revert:** Pass ``score_max_tokens=16`` at construction
   to restore source's value.
-
-  **Not a separate divergence:** The score parser itself
-  (``_parse_score``) now matches source byte-for-byte: prefix
-  match against ``(Score|Rating|Result)[\s:]*([0-5])``
-  case-insensitive, fall back to LAST isolated ``\b[0-5]\b``
-  digit, otherwise 0 with a warning. The earlier
-  ``re.search(r"-?\d+(?:\.\d+)?", text)`` shipped in PR #20 was
-  an undocumented divergence from source; this PR restores source
-  semantics.
