@@ -34,24 +34,34 @@ Layered architecture, agreed on 2026-05-08:
 
 - ``Judge`` *(built; LiteLLMJudge concrete)* — ``score_one`` /
   ``score_batch`` / ``respond_one`` over a litellm-backed provider.
-- ``Trainer`` *(partial)*
+- ``Trainer`` *(both concretes built; shared Protocol not yet promoted)*
   - ``SFTTrainer`` *(built)* — wraps TRL's ``SFTTrainer`` + a PEFT
     ``LoraConfig``. Used for Phases 1 and 3.
-  - ``ConsistencyTrainer`` *(not built)* — Phase 2/3 ACT/BCT,
-    parameterised by ``LossFn``. Once it lands, promote the pair to
-    a ``Trainer`` Protocol.
-- ``LossFn`` *(not built)* — pluggable: ``ActLoss``, ``BctLoss``;
-  slots into ``ConsistencyTrainer``.
-- ``Labeller`` *(not built)* —
-  ``(dataset, model) → dataset_with_label_column``. Uniform
-  shape for every labelling strategy: emit one label per row.
-  Concretes: ``SelfRewarding``, ``DualDecoding``,
-  ``SelfCertainty``, ``SelfRefinement``,
-  ``MultiViewConsistency``, ``SelfDistillation`` (the source
-  repo's ``ACTBCTLabeller`` renamed for what it actually does:
-  generate from the organism), ``RejectionSampling``. The "ACT/
-  BCT is special" framing was a misread — the asymmetry lives
-  in the dataset schema and the trainer, not the labeller.
+  - ``ConsistencyTrainer`` *(built; PR #29)* — HF ``Trainer`` subclass
+    for Phase 2/3 ACT/BCT, parameterised by ``LossFn``. The two
+    trainers aren't yet behind a shared ``Trainer`` Protocol —
+    promote when a third consumer needs the abstraction.
+- ``LossFn`` *(built; PR #29)* — pluggable consistency objective;
+  ``compute(model, clean_inputs, wrapped_inputs)``, each loss owns its
+  paired forward passes. Concretes: ``ActLoss`` (raw per-decoder-layer
+  activation L2, hook-captured) and ``BctLoss`` (soft-label logit KL).
+  Faithful to the source; the source's BCT is logit-KL, not the
+  original BCT paper's SFT (see divergences.md).
+- ``Reranker`` *(built; PR #27)* — ``rank(query, candidates) →
+  list[float]``. Concrete: ``SkyworkRewardReranker``
+  (Skywork-Reward-V2-Llama-3.1-8B — Llama not Qwen, per the UK-gov
+  model-provenance constraint). Consumed by ``DualDecoding`` and
+  ``RejectionSampling``.
+- ``Labeller`` *(built)* — ``label(dataset) →
+  dataset_with_label_column``; the generator / judge / reranker is
+  injected at construction. Uniform shape for every strategy: emit one
+  label per row. Concretes shipped: ``SelfRewarding`` + the source's
+  ``ACTBCTLabeller`` (renamed ``GreedySelfTraining`` for what it does)
+  (PR #20), ``SelfRefinement`` (PR #23), ``SelfCertainty`` (PR #24),
+  ``MultiViewConsistency`` (PR #26), ``RejectionSampling`` +
+  ``DualDecoding`` (PR #27). The "ACT/BCT is special" framing was a
+  misread — the asymmetry lives in the dataset schema and the trainer,
+  not the labeller.
 - ``Benchmark`` *(complete for the four planned tasks)* —
   ``(generator) → dict[str, float]``. Capability concretes shipped:
   ``MMLU`` (PR #13), ``TruthfulQA`` (PR #14), ``GPQA`` (PR #16),
@@ -116,11 +126,11 @@ logger.
    dataset schema (clean + wrapped columns on
    ``consistency_dataset``) and in the trainer's paired forward
    passes, not in the labeller. ``Labeller`` stays uniform:
-   ``(dataset, model) → dataset_with_label_column``. No
+   ``label(dataset) → dataset_with_label_column``. No
    ``PairedLabeller`` Protocol, no ``LabelArtifact`` union. The
    source's ``ACTBCTLabeller`` is just a generate-from-the-
-   organism strategy — renamed ``SelfDistillationLabeller`` in
-   our reimplementation to reflect what it actually does.
+   organism strategy — renamed ``GreedySelfTraining`` in our
+   reimplementation to reflect what it actually does.
 3. **Eval as a phase.** Clean shape: ``EvaluationPhase(list[Benchmark])``
    parameterised by which benchmarks to run. Decide before Phase
    work.
@@ -225,37 +235,42 @@ lives in the dataset schema and the trainer's forward passes,
 not in the labeller's return type. ``Labeller`` stays uniform.
 ``Trainer`` and ``LossFn`` are the asymmetric concerns. The
 plan below reflects that collapse — D4 ("ActBctLabeller as a
-special case") is gone; its substance moves into D2's
-``SelfDistillationLabeller`` and D3's ``ConsistencyTrainer``.
+special case") is gone; its substance moved into D2's
+``GreedySelfTrainingLabeller`` (the renamed ``ACTBCTLabeller``) and
+D3's ``ConsistencyTrainer``.
+
+Stage D is complete except D1 (the ``Phase`` class-vs-script
+decision), which is deferred to Stage E where the ``Phase``
+abstractions land. Next up: Stage E orchestration.
 
 D1. **Lock the ``Phase`` class-vs-script tension** (open
-    question 1).
-D2. **``Labeller`` Protocol + first concretes** — ``(dataset,
-    model) → dataset_with_label_column``. Ship the protocol plus
-    two concretes to validate the shape:
-    - ``SelfRewarding`` — the simplest self-labelling strategy,
-      validates the standard SFT path.
-    - ``SelfDistillation`` — generate-from-the-organism, validates
-      that the same protocol handles the paired-dataset shape
-      consistency training will consume in D3.
-    The two concretes together prove the protocol generalises
-    across both single-prompt and clean+wrapped datasets without
-    a paired-vs-union distinction.
-D3. **``ConsistencyTrainer`` + ``LossFn`` + paired collator** —
-    HF ``Trainer`` subclass that does two forward passes
-    per batch (clean prompt, wrapped prompt) and applies a
-    pluggable ``LossFn``. Concrete losses: ``ActLoss`` (L2 over
-    matched-suffix hidden activations) and ``BctLoss``
-    (cross-entropy of wrapped logits against frozen clean logits
-    as soft labels). Paired data collator emits
-    ``{clean_input_ids, clean_attention_mask, wrapped_input_ids,
-    wrapped_attention_mask}``.
-D4. **Remaining labellers** — ``DualDecoding``,
-    ``SelfCertainty``, ``SelfRefinement``,
-    ``MultiViewConsistency``. Mechanical once D2 is solid.
-D5. **``RejectionSampling`` baseline labeller** — the last
-    Phase-2-style strategy (sample N completions, pick highest
-    judge score).
+    question 1). Still open — deferred to Stage E, where the
+    ``Phase`` abstractions land.
+D2. ✅ **``Labeller`` Protocol + first concretes** *(PR #20)* —
+    ``label(dataset) → dataset_with_label_column`` with the
+    generator injected at construction. Shipped ``SelfRewarding``
+    (standard SFT path) and ``GreedySelfTraining`` (the source's
+    ``ACTBCTLabeller``, generate-from-the-organism) together,
+    proving the protocol generalises across single-prompt and
+    clean+wrapped datasets without a paired-vs-union distinction.
+    Prompt-only slicing fix (PR #22); SelfRewarding score budget +
+    two-tier parser (PR #25).
+D3. ✅ **``ConsistencyTrainer`` + ``LossFn`` + paired collator**
+    *(PR #29; ``PairedDataCollator`` landed with the data layer)* —
+    HF ``Trainer`` subclass; each ``LossFn`` runs its own clean
+    (frozen, eval) and wrapped (trainable) forward passes. ``ActLoss``
+    (raw per-decoder-layer activation L2 via forward hooks) and
+    ``BctLoss`` (soft-label logit KL). Real-data smoke on Llama-3.2-1B
+    passed (extractor finds all layers, both losses finite, gradients
+    flow).
+D4. ✅ **Remaining labellers** — ``SelfRefinement`` (PR #23),
+    ``SelfCertainty`` (PR #24), ``MultiViewConsistency`` (PR #26),
+    ``DualDecoding`` + ``Reranker`` protocol + ``SkyworkRewardReranker``
+    (PR #27).
+D5. ✅ **``RejectionSampling`` baseline labeller** *(PR #27)* — the
+    external-reward-model strategy: sample N completions, score each
+    with the ``Reranker``, keep the highest. (Paper Appendix A6; uses
+    the reward model, not the LLM judge.)
 
 ### Stage E — Orchestration
 
