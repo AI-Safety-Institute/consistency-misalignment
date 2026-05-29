@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from transformers import AutoTokenizer
 from vllm import LLM, SamplingParams
 from vllm.lora.request import LoRARequest
+from vllm.sampling_params import BeamSearchParams
 
 from consistency_em._utils import render_messages
 from consistency_em.models.base_model import BaseModel
@@ -221,6 +222,30 @@ class VLLMGenerator:
                     )
                 )
         return results
+
+    def generate_beam_search(
+        self,
+        prompts: list[list[dict[str, str]]],
+        beam_width: int = 4,
+        max_tokens: int = 256,
+    ) -> list[str]:
+        """Run beam search and return each prompt's post-processed top-1 beam."""
+        rendered = [
+            render_messages(messages, self.tokenizer, add_generation_prompt=True)
+            for messages in prompts
+        ]
+        beam_params = BeamSearchParams(beam_width=beam_width, max_tokens=max_tokens)
+        beam_inputs = [{"prompt": rendered_prompt} for rendered_prompt in rendered]
+
+        outputs = self.llm.beam_search(
+            beam_inputs, beam_params, lora_request=self.lora_request, use_tqdm=False
+        )
+
+        completions: list[str] = []
+        for output in outputs:
+            best_text = output.sequences[0].text or ""
+            completions.append(self._postprocess_text(best_text))
+        return completions
 
     def _postprocess_text(self, text: str) -> str:
         """Normalize raw model output before it leaves the generator.
