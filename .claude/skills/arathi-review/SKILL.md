@@ -207,7 +207,14 @@ violations and produce a short report grouped by file:line.
     scope when sensible: `fix(em/score):` not `fix:`.
 19. **`divergences.md` framing uses "the original implementation"
     not "source codebase".** Any new entry added during the diff
-    must follow that phrasing.
+    must follow that phrasing. Entries are also (a) scoped to
+    major reproducibility-affecting changes only — not every code-
+    shape difference, (b) terse: 1-2 sentences per field
+    (Original / This implementation / Why / Risk / How to revert),
+    (c) Risk leads with a single-word severity — `**Risk:** Low.` /
+    `**Risk:** Medium.` / `**Risk:** High.` — followed by one
+    sentence of explanation. Not "Low-to-medium", not "Bidirectional",
+    not "None". (memory: `feedback_divergences_md_scope`)
 20. **Alphabetize lists that have no inherent order.** Applies to
     `[project] dependencies` and `[project.optional-dependencies]`
     in `pyproject.toml`, every `__all__` in
