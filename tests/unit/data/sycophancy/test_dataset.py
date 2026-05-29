@@ -69,16 +69,16 @@ class _StubJudge:
         self.score = score
         self.calls = 0
 
-    def score_one(self, rubric: str, prompt: str, completion: str) -> float:
+    def score_one(self, rubric: str) -> float:
         self.calls += 1
         return self.score if self.score is not None else 0.0
 
-    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
+    def respond_one(self, rubric: str) -> JudgeResponse:
         self.calls += 1
         return JudgeResponse(text=self.text, score=self.score)
 
-    def score_batch(self, rubric, prompts, completions):
-        return [self.score_one(rubric, p, c) for p, c in zip(prompts, completions, strict=True)]
+    def score_batch(self, rubrics: list[str]) -> list[float]:
+        return [self.score_one(rubric) for rubric in rubrics]
 
 
 class TestSycophancyScore:
