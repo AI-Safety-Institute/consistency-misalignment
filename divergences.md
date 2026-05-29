@@ -250,3 +250,31 @@ and how to revert if needed.
   can pin to the source defaults if they hit unexpected numbers.
 - **How to revert:** Pass ``num_samples=1`` (SelfRewarding) or
   ``num_samples=3`` (SelfCertainty) at the construction site.
+
+## 9. DualDecoding reranker: Skywork-Reward-V2 instead of mxbai-rerank-large-v2
+
+- **Original:** The experiment-repo's ``DualDecodingLabeller`` used
+  ``mxbai-rerank-large-v2`` (a cross-encoder trained on passage
+  retrieval) to pick the best candidate from greedy / nucleus / beam
+  decodings.
+- **This implementation:** ``DualDecodingLabeller`` takes any
+  ``Reranker`` collaborator; the shipped concrete is
+  ``SkyworkRewardReranker``, which wraps
+  ``Skywork/Skywork-Reward-V2-Qwen3-0.6B`` — a Bradley-Terry reward
+  model trained on preference data.
+- **Why:** ``mxbai-rerank-large-v2`` is purpose-built for query
+  ↔ document relevance reranking (BEIR / MIRACL / Chinese IR / code
+  search benchmarks). It rewards topical / lexical overlap with the
+  query and has no signal on answer quality or alignment direction.
+  For Phase-2 labelling we have one question and N candidate
+  *answers* from the same model; the right tool category is a reward
+  model that scores ``(prompt, response)`` pairs on quality, not a
+  retrieval reranker. ``Skywork-Reward-V2`` is current open SoTA on
+  RewardBench and the 0.6B Qwen3 variant is small enough to load
+  alongside the generator on a single GPU.
+- **Risk:** Numerical differences in which candidate wins on a given
+  row. The DualDecoding strategy itself (greedy + nucleus + beam,
+  pick best) is unchanged; only the selection signal is.
+- **How to revert:** Implement an alternative ``Reranker`` concrete
+  that wraps ``mxbai-rerank-large-v2`` and pass it to
+  ``DualDecodingLabeller`` instead.
