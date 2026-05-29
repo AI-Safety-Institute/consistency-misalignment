@@ -309,6 +309,99 @@ class TestSFTTrainerTrain:
         assert trl_trainer.save_model_called_with == "/tmp/save-here"
 
 
+class _FakePeftModel:
+    from_pretrained_calls: list[dict[str, Any]] = []
+
+    @classmethod
+    def from_pretrained(cls, model: Any, adapter_path: str, **kwargs: Any) -> _FakePeftModel:
+        cls.from_pretrained_calls.append({"model": model, "adapter_path": adapter_path, **kwargs})
+        return cls()
+
+
+@pytest.fixture
+def fake_adapter_loading(monkeypatch: pytest.MonkeyPatch) -> type[_FakePeftModel]:
+    _FakePeftModel.from_pretrained_calls = []
+    monkeypatch.setattr(
+        sft_trainer_module.AutoModelForCausalLM,
+        "from_pretrained",
+        lambda model_id, **kwargs: f"<base: {model_id}>",
+    )
+    monkeypatch.setattr(sft_trainer_module, "PeftModel", _FakePeftModel)
+    return _FakePeftModel
+
+
+def _single_row_dataset() -> Dataset:
+    return Dataset.from_list(
+        [
+            {
+                "messages": [
+                    {"role": "user", "content": "q"},
+                    {"role": "assistant", "content": "a"},
+                ]
+            }
+        ]
+    )
+
+
+class TestSFTTrainerAdapterContinuation:
+    def test_loads_the_adapter_trainable_from_its_path(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+        fake_adapter_loading: type[_FakePeftModel],
+    ) -> None:
+        organism = LoRAAdapter(path=Path("/tmp/organism"), base_model=LLAMA_3_2_1B, rank=32)
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"), adapter=organism)
+
+        trainer.train(_single_row_dataset())
+
+        load_call = fake_adapter_loading.from_pretrained_calls[-1]
+        assert load_call["adapter_path"] == "/tmp/organism"
+        assert load_call["is_trainable"] is True
+
+    def test_hands_the_loaded_model_to_trl_without_a_fresh_peft_config(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+        fake_adapter_loading: type[_FakePeftModel],
+    ) -> None:
+        organism = LoRAAdapter(path=Path("/tmp/organism"), base_model=LLAMA_3_2_1B, rank=32)
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"), adapter=organism)
+
+        trainer.train(_single_row_dataset())
+
+        trl_trainer = _FakeTRLSFTTrainer.instances[-1]
+        assert isinstance(trl_trainer.init_kwargs["model"], _FakePeftModel)
+        assert "peft_config" not in trl_trainer.init_kwargs
+
+    def test_returned_adapter_carries_the_organisms_rank(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+        fake_adapter_loading: type[_FakePeftModel],
+    ) -> None:
+        organism = LoRAAdapter(path=Path("/tmp/organism"), base_model=LLAMA_3_2_1B, rank=32)
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"), adapter=organism)
+
+        adapter = trainer.train(_single_row_dataset())
+
+        assert adapter == LoRAAdapter(path=Path("/tmp/out"), base_model=LLAMA_3_2_1B, rank=32)
+
+    def test_no_adapter_uses_fresh_peft_config_and_not_the_load_path(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+        fake_adapter_loading: type[_FakePeftModel],
+    ) -> None:
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=Path("/tmp/out"))
+
+        trainer.train(_single_row_dataset())
+
+        trl_trainer = _FakeTRLSFTTrainer.instances[-1]
+        assert trl_trainer.init_kwargs["peft_config"] is trainer.lora_config
+        assert fake_adapter_loading.from_pretrained_calls == []
+
+
 class TestLoRAModuleCoverage:
     def test_all_linear_wraps_full_llama_linear_set(
         self,
