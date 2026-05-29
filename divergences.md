@@ -19,7 +19,7 @@ Each entry names the divergence and how to revert.
   generalises beyond training, which is the claim the paper turns on.
   The in-distribution set only measures sycophancy on problems
   structurally identical to training.
-- **Risk:** Different question distribution, different metric
+- **Risk:** High. Different question distribution, different metric
   semantics. Numbers not directly comparable to the in-distribution
   tables.
 - **How to revert:** Replace `eval.jsonl` with Azarbal's `test.jsonl`,
@@ -34,9 +34,9 @@ Each entry names the divergence and how to revert.
 - **Why:** The OOD eval has mixed numeric and string answers
   (`Paris`, `seek medical attention`); regexes tuned for `gcd = N`
   don't generalise.
-- **Risk:** Bidirectional. May over-credit a completion that mentions
-  the answer in irrelevant context; may under-credit a numeric answer
-  the original regexes would have caught.
+- **Risk:** Low. Bidirectional: may over-credit a completion that
+  mentions the answer in irrelevant context, or under-credit a numeric
+  answer the original regexes would have caught.
 - **How to revert:** Reimplement the layered substring + regex check.
 
 ## 3. Sycophancy coherence metric dropped
@@ -46,8 +46,8 @@ Each entry names the divergence and how to revert.
 - **This implementation:** No coherence judge call.
 - **Why:** Doubles judge cost for an informational metric not used
   downstream. Headline `sycophancy_rate_mean` is unaffected.
-- **Risk:** None on the headline; loses diagnostic info for
-  garbage-on-OOD debugging.
+- **Risk:** Low. No effect on the headline metric; loses diagnostic
+  info for garbage-on-OOD debugging.
 - **How to revert:** Add a second judge call per row with a
   COHERENT / INCOHERENT rubric and surface `coherence_rate_mean`.
 
@@ -64,7 +64,7 @@ Each entry names the divergence and how to revert.
 - **Why:** Logprob scoring avoids both the 4-choice filter (which
   drops ~40% of the data) and text-parse misclassification when the
   model emits the answer in an unexpected format.
-- **Risk:** Different protocol, different metric definitions,
+- **Risk:** High. Different protocol, different metric definitions,
   different sample size; not directly comparable to the original.
   gpt-oss-20B undersells under direct-logit scoring — same protocol
   mismatch as MMLU on gpt-oss (PR #13).
@@ -85,7 +85,7 @@ Each entry names the divergence and how to revert.
   model's answer doesn't match the expected format. The
   consistency-training paper cares about whether capability loss
   concentrates in one scientific domain.
-- **Risk:** Different scoring protocol — numbers not directly
+- **Risk:** High. Different scoring protocol — numbers not directly
   comparable. Different shuffle seed changes which specific rows are
   correct; mean is unaffected over 198 rows. gpt-oss-20B expected to
   undersell the same way it does on MMLU.
@@ -105,9 +105,9 @@ Each entry names the divergence and how to revert.
   per-jailbreak breakdowns.
 - **Why:** Keeps scoring inside the `Benchmark` / `Judge` Protocol so
   the judge stays swappable and the rubric is explicit in this repo.
-- **Risk:** Judge backend differs (fine-tuned Gemma-2B vs OpenAI
-  rubric judge); per-row scores may disagree even though the rubric
-  definitions match.
+- **Risk:** Medium. Judge backend differs (fine-tuned Gemma-2B vs
+  OpenAI rubric judge); per-row scores may disagree even though the
+  rubric definitions match.
 - **How to revert:** Add `strong-reject` as a dependency and call
   `evaluate_dataset(..., ["strongreject_finetuned"])` in place of
   `judge.respond_batch`.
@@ -122,9 +122,9 @@ Each entry names the divergence and how to revert.
 - **Why:** Matches the rest of this repo's labeller-generator
   interface and gives instruct / fine-tuned-organism models a proper
   user-turn signal.
-- **Risk:** Inner instruction is identical so the task asked of the
-  model is the same. Behavior may differ on base models that respond
-  differently to chat-template tokens vs raw text.
+- **Risk:** Low. Inner instruction is identical so the task asked of
+  the model is the same. Behavior may differ on base models that
+  respond differently to chat-template tokens vs raw text.
 - **How to revert:** Add a raw-text `generate` path to `VLLMGenerator`
   and render the instruction against the decoded prompt.
 
@@ -137,8 +137,8 @@ Each entry names the divergence and how to revert.
 - **Why:** A default of 1 makes best-of-N a tautology; surfacing
   `num_samples` on `__init__` rather than `label_samples` makes the
   setting easier to see.
-- **Risk:** Numerical results depend on `num_samples`. Paper-faithful
-  callsites pass the value explicitly so the default isn't
-  load-bearing.
+- **Risk:** Low. Numerical results depend on `num_samples`, but
+  paper-faithful callsites pass the value explicitly so the default
+  isn't load-bearing.
 - **How to revert:** Pass `num_samples=1` (SelfRewarding) or `=3`
   (SelfCertainty) at construction.
