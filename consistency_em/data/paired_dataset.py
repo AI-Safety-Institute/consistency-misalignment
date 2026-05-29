@@ -15,6 +15,45 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import torch
+from datasets import Dataset
+
+from consistency_em._utils import render_messages
+
+
+def tokenize_paired_dataset(
+    paired_dataset: Dataset,
+    tokenizer: object,
+    max_length: int = 1024,
+) -> Dataset:
+    """Add the four token columns the paired collator consumes.
+
+    Renders each row's ``clean_messages`` and ``wrapped_messages``
+    through the chat template and tokenizes them (truncating to
+    ``max_length``), yielding ``clean_input_ids`` / ``clean_attention_mask``
+    / ``wrapped_input_ids`` / ``wrapped_attention_mask`` and dropping the
+    original columns. The assistant turn is already present in both
+    sides, so no generation prompt is appended.
+    """
+
+    def tokenize_row(row: dict) -> dict:
+        clean = tokenizer(
+            render_messages(row["clean_messages"], tokenizer, add_generation_prompt=False),
+            truncation=True,
+            max_length=max_length,
+        )
+        wrapped = tokenizer(
+            render_messages(row["wrapped_messages"], tokenizer, add_generation_prompt=False),
+            truncation=True,
+            max_length=max_length,
+        )
+        return {
+            "clean_input_ids": clean["input_ids"],
+            "clean_attention_mask": clean["attention_mask"],
+            "wrapped_input_ids": wrapped["input_ids"],
+            "wrapped_attention_mask": wrapped["attention_mask"],
+        }
+
+    return paired_dataset.map(tokenize_row, remove_columns=paired_dataset.column_names)
 
 
 @dataclass
