@@ -253,24 +253,12 @@ and how to revert if needed.
 
 ## 9. SelfRewarding: score_max_tokens default raised 16 → 512
 
-- **Original:** ``scoring_params = SamplingParams(temperature=0.0,
-  max_tokens=16)``. The scoring pass is truncated at 16 tokens.
-- **This implementation:** ``score_max_tokens`` default raised to
-  512. Caller can override at construction.
-- **Why:** The shipped rubrics ask the model to "provide a brief
-  critique ... then ... Final Score: [score]". With 16 tokens the
-  scoring pass usually runs out of budget mid-critique, before the
-  ``Final Score:`` line is reached, so the parser falls through to
-  the warning path and returns 0. 512 tokens gives the model room
-  for a short critique plus the score line. Measured empirically on
-  Llama-3.1-8B-Instruct × sycophancy (20 scoring samples): 16
-  tokens → 100% parse failure, 128 → 25% prefix parse, 512 → 100%
-  prefix parse. The scoring pass remains greedy (temperature 0.0);
-  cost grows roughly linearly in budget.
-- **Risk:** Low. Numerical scores would differ from a source run
-  that happened to land on a truncated-but-parseable response —
-  but those scores were already unreliable on the same shipped
-  rubrics, so this is a net improvement in label quality, not a
-  reproducibility hazard.
-- **How to revert:** Pass ``score_max_tokens=16`` at construction
-  to restore source's value.
+- **Original:** ``max_tokens=16`` on the scoring pass.
+- **This implementation:** ``score_max_tokens`` default is 512.
+- **Why:** The shipped rubrics ask for a brief critique followed by
+  ``Final Score: [score]``; 16 tokens usually truncates before the
+  score line, so the parser returns 0. 512 leaves room for the
+  critique plus the score line.
+- **Risk:** Changes the per-row score distribution that downstream
+  Phase-2 labels are picked from.
+- **How to revert:** Pass ``score_max_tokens=16`` at construction.
