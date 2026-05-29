@@ -4,8 +4,30 @@ from __future__ import annotations
 
 import pytest
 
-from consistency_em._utils import mean_or_zero, prompt_only_messages, render_messages
+from consistency_em._utils import chunked, mean_or_zero, prompt_only_messages, render_messages
 from tests.unit.conftest import _FakeTokenizer
+
+
+class TestChunked:
+    def test_reshapes_into_consecutive_chunks(self) -> None:
+        reshaped = chunked([1, 2, 3, 4, 5, 6], 2)
+
+        assert reshaped == [[1, 2], [3, 4], [5, 6]]
+
+    def test_chunk_size_equal_to_length_returns_one_chunk(self) -> None:
+        reshaped = chunked([1, 2, 3], 3)
+
+        assert reshaped == [[1, 2, 3]]
+
+    def test_empty_sequence_returns_empty_list(self) -> None:
+        reshaped = chunked([], 4)
+
+        assert reshaped == []
+
+    def test_ragged_tail_kept_as_short_chunk(self) -> None:
+        reshaped = chunked([1, 2, 3, 4, 5], 2)
+
+        assert reshaped == [[1, 2], [3, 4], [5]]
 
 
 class TestMeanOrZero:

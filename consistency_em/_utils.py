@@ -16,6 +16,11 @@ def mean_or_zero(values: Sequence[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
+def chunked(sequence: list, chunk_size: int) -> list[list]:
+    """Reshape a flat list into consecutive ``chunk_size``-element chunks."""
+    return [sequence[start : start + chunk_size] for start in range(0, len(sequence), chunk_size)]
+
+
 def render_messages(
     messages: list[dict[str, str]],
     tokenizer: PreTrainedTokenizerBase,

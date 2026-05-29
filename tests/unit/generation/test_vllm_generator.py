@@ -19,6 +19,7 @@ class _FakeLLM:
     def __init__(self, **kwargs: Any) -> None:
         self.init_kwargs = kwargs
         self.generate_calls: list[tuple[list[str], Any, Any]] = []
+        self.beam_search_calls: list[tuple[list[Any], Any, Any]] = []
         self._response_per_call = [["completion"]]
         self._logprob_response_per_call: list[dict[int, float]] = []
         self._prompt_logprob_response_per_call: list[
@@ -27,6 +28,18 @@ class _FakeLLM:
         self._with_logprob_completions_per_call: list[
             list[tuple[str, float | None, list[int]]]
         ] = []
+        self._beam_responses_per_prompt: list[list[str]] = []
+
+    def set_beam_responses(self, best_text_per_prompt: list[str]) -> None:
+        """One best-beam text per prompt, modeling vLLM's beam-search top-1."""
+        self._beam_responses_per_prompt = [[text] for text in best_text_per_prompt]
+
+    def beam_search(self, beam_inputs, beam_params, lora_request=None, use_tqdm=False):
+        self.beam_search_calls.append((beam_inputs, beam_params, lora_request))
+        return [
+            types.SimpleNamespace(sequences=[types.SimpleNamespace(text=text) for text in beams])
+            for beams in self._beam_responses_per_prompt
+        ]
 
     def set_responses(self, responses_per_prompt: list[list[str]]) -> None:
         self._response_per_call = responses_per_prompt
@@ -801,3 +814,65 @@ class TestVLLMGeneratorGenerateWithLogprobs:
         results = generator.generate_with_logprobs([[{"role": "user", "content": "p"}]])
 
         assert results[0].text == "padded with whitespace"
+
+
+class TestVLLMGeneratorGenerateBeamSearch:
+    def test_returns_one_best_beam_per_prompt(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_beam_responses(["best-for-prompt-0", "best-for-prompt-1"])
+
+        results = generator.generate_beam_search(
+            [
+                [{"role": "user", "content": "p0"}],
+                [{"role": "user", "content": "p1"}],
+            ]
+        )
+
+        assert results == ["best-for-prompt-0", "best-for-prompt-1"]
+
+    def test_beam_search_params_carry_beam_width_and_max_tokens(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_beam_responses(["best"])
+
+        generator.generate_beam_search(
+            [[{"role": "user", "content": "p"}]], beam_width=8, max_tokens=128
+        )
+
+        beam_inputs, beam_params, _ = generator.llm.beam_search_calls[0]
+        assert beam_params.beam_width == 8
+        assert beam_params.max_tokens == 128
+        assert len(beam_inputs) == 1
+
+    def test_beam_outputs_are_postprocessed(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_beam_responses(["   padded best beam   "])
+
+        results = generator.generate_beam_search([[{"role": "user", "content": "p"}]])
+
+        assert results == ["padded best beam"]
+
+    def test_empty_beam_text_returns_empty_string(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(LLAMA_3_1_8B)
+        generator.llm.set_beam_responses([""])
+
+        results = generator.generate_beam_search([[{"role": "user", "content": "p"}]])
+
+        assert results == [""]
+
+    def test_harmony_final_channel_is_extracted_for_harmony_models(
+        self, fake_tokenizer: _FakeTokenizer, fake_llm_class: type[_FakeLLM]
+    ) -> None:
+        generator = VLLMGenerator(GPT_OSS_20B)
+        generator.llm.set_beam_responses(["analysis some thinking final the beam answer"])
+
+        results = generator.generate_beam_search([[{"role": "user", "content": "p"}]])
+
+        assert results == ["the beam answer"]
