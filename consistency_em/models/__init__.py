@@ -10,6 +10,7 @@ from consistency_em.models.base_model import (
     BaseModel,
 )
 from consistency_em.models.lora_adapter import LoRAAdapter
+from consistency_em.models.model_organism import ModelOrganism
 
 __all__ = [
     "BaseModel",
@@ -20,4 +21,5 @@ __all__ = [
     "LLAMA_3_2_1B",
     "LoRAAdapter",
     "MISTRAL_7B_V0_3",
+    "ModelOrganism",
 ]
