@@ -77,8 +77,6 @@ class MultiViewConsistencyLabeller:
             self._with_user_suffix(sliced, self.JSON_SUFFIX) for sliced in std_messages
         ]
 
-        # vLLM continuous batching benefits from one larger generate call
-        # over three smaller sequential ones with identical kwargs.
         row_count = len(std_messages)
         combined_messages = std_messages + cot_messages + json_messages
         combined_outputs = self.generator.generate(
