@@ -168,6 +168,17 @@ class TestSelfRewardingLabellerScoreParsing:
 
         assert labelled["self_rewarding_label_score"] == [0.0]
 
+    def test_score_prefix_followed_by_multi_digit_number_is_rejected(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["Final Score: 24"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["self_rewarding_label_score"] == [0.0]
+
     def test_all_parse_failed_scores_select_first_completion(self, rubric: str) -> None:
         generator = make_generator(
             sampling_outputs=["first-candidate", "second-candidate", "third-candidate"],

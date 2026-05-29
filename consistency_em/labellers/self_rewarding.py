@@ -125,13 +125,15 @@ class SelfRewardingLabeller:
         bounded fallback so problem numbers in the critique prose (e.g. "GCD
         of 56 and 21") don't get mistaken for the score:
 
-        1. ``(Score|Rating|Result)[\\s:]*N`` where N is 0–5 — case insensitive.
-           Captures ``Final Score: 4``, ``score: 5``, ``Rating: 3``.
+        1. ``(Score|Rating|Result)[\\s:]*\\bN\\b`` where N is 0–5 — case
+           insensitive. Captures ``Final Score: 4``, ``score: 5``,
+           ``Rating: 3``. The word boundary stops degenerate increment loops
+           like ``Final Score: 24.5`` (which would otherwise capture ``2``).
         2. The LAST isolated 0–5 digit (``\\b[0-5]\\b``) anywhere in the
            response, if no prefix matched.
         3. Otherwise 0.0 with a warning.
         """
-        prefix_match = re.search(r"(?:Score|Rating|Result)[\s:]*([0-5])", text, re.IGNORECASE)
+        prefix_match = re.search(r"(?:Score|Rating|Result)[\s:]*\b([0-5])\b", text, re.IGNORECASE)
         if prefix_match is not None:
             return float(prefix_match.group(1))
         isolated_digits = re.findall(r"\b([0-5])\b", text)
