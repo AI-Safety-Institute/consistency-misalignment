@@ -253,8 +253,8 @@ and how to revert if needed.
 
 ## 9. DualDecoding reranker: Skywork-Reward-V2 instead of mxbai-rerank-large-v2
 
-- **Original:** The experiment-repo's ``DualDecodingLabeller`` used
-  ``mxbai-rerank-large-v2`` (a cross-encoder trained on passage
+- **Original:** The original implementation's ``DualDecodingLabeller``
+  used ``mxbai-rerank-large-v2`` (a cross-encoder trained on passage
   retrieval) to pick the best candidate from greedy / nucleus / beam
   decodings.
 - **This implementation:** ``DualDecodingLabeller`` takes any
@@ -275,6 +275,5 @@ and how to revert if needed.
 - **Risk:** Numerical differences in which candidate wins on a given
   row. The DualDecoding strategy itself (greedy + nucleus + beam,
   pick best) is unchanged; only the selection signal is.
-- **How to revert:** Implement an alternative ``Reranker`` concrete
-  that wraps ``mxbai-rerank-large-v2`` and pass it to
-  ``DualDecodingLabeller`` instead.
+- **How to revert:** Inject an alternative ``Reranker`` concrete via
+  ``DualDecodingLabeller(..., reranker=...)``.

@@ -12,20 +12,17 @@ class SkyworkRewardReranker:
     Each candidate is formatted as a single-turn chat
     ``[{user: query}, {assistant: candidate}]``, passed through the
     tokenizer's chat template, and scored by a Bradley-Terry reward
-    head. Higher logits mean the reward model prefers the candidate.
-    The labeller picks the argmax over candidates per row.
+    head.
 
     Args:
         model_id: A Skywork-Reward-V2 model id on the Hugging Face Hub.
-            Defaults to the 0.6B Qwen3 variant — small enough to load
-            alongside the generator on a single GPU.
         device: Torch device to load the model onto. Defaults to
             ``cuda`` if available, else ``cpu``.
         torch_dtype: Parameter dtype. Reward models are typically
             evaluated in bf16.
-        max_length: Hard cap on tokenized conversation length. Skywork
-            was trained at 16K, but for Phase-2 labelling the
-            (question, candidate) pairs are usually well under 4K.
+        max_length: Hard cap on tokenized conversation length, below
+            the model's trained context length so any single
+            (question, candidate) pair fits comfortably.
     """
 
     DEFAULT_MODEL_ID = "Skywork/Skywork-Reward-V2-Qwen3-0.6B"
@@ -41,11 +38,19 @@ class SkyworkRewardReranker:
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.max_length = max_length
         self.tokenizer = AutoTokenizer.from_pretrained(model_id)
+        if self.tokenizer.pad_token_id is None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        # LlamaForSequenceClassification-style heads find the last
+        # non-pad position with ``(input_ids != pad_token_id).sum(-1) - 1``,
+        # which only works correctly when padding is on the right.
+        self.tokenizer.padding_side = "right"
+        self.bos_token = self.tokenizer.bos_token
         self.model = AutoModelForSequenceClassification.from_pretrained(
             model_id,
             torch_dtype=torch_dtype,
             num_labels=1,
         ).to(self.device)
+        self.model.config.pad_token_id = self.tokenizer.pad_token_id
         self.model.eval()
 
     def rank(self, query: str, candidates: list[str]) -> list[float]:
@@ -61,7 +66,7 @@ class SkyworkRewardReranker:
             max_length=self.max_length,
         ).to(self.device)
 
-        with torch.no_grad():
+        with torch.inference_mode():
             outputs = self.model(**tokenized)
 
         scores = outputs.logits.squeeze(-1).float().cpu().tolist()
@@ -72,11 +77,9 @@ class SkyworkRewardReranker:
             {"role": "user", "content": query},
             {"role": "assistant", "content": candidate},
         ]
-        rendered = self.tokenizer.apply_chat_template(conversation, tokenize=False)
-        # Skywork's model card warns the chat template may prepend BOS,
-        # which the tokenizer would then re-prepend during encoding —
-        # strip the leading BOS to avoid a double-BOS.
-        bos = self.tokenizer.bos_token
-        if bos is not None and rendered.startswith(bos):
-            rendered = rendered[len(bos) :]
+        rendered = self.tokenizer.apply_chat_template(
+            conversation, tokenize=False, add_generation_prompt=False
+        )
+        if self.bos_token is not None and rendered.startswith(self.bos_token):
+            rendered = rendered[len(self.bos_token) :]
         return rendered
