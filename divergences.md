@@ -169,3 +169,18 @@ Each entry names the divergence and how to revert.
 - **Risk:** Medium. Changes which candidate wins on most rows.
 - **How to revert:** Inject an alternative `Reranker` via
   `DualDecodingLabeller(..., reranker=...)`.
+
+## 11. ActLoss masks padding positions; the original averages over them
+
+- **Original:** `compute_act_loss` takes no attention masks and means
+  the squared activation difference over the whole suffix, including
+  padding positions.
+- **This implementation:** `ActLoss` excludes padding positions
+  (attention mask 0 on either side) from the mean.
+- **Why:** Padding-position activations are meaningless and shouldn't
+  contribute to the loss. Inert at the original's `batch_size=1` (no
+  padding); only differs at batch > 1.
+- **Risk:** Low. No effect at the batch size the original ran; at
+  batch > 1 ours is the more correct quantity.
+- **How to revert:** Mean over the full suffix without applying the
+  combined attention mask.
