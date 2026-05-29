@@ -7,7 +7,7 @@ import re
 
 from datasets import Dataset
 
-from consistency_em._utils import prompt_only_messages
+from consistency_em._utils import chunked, prompt_only_messages
 from consistency_em.generation.vllm_generator import VLLMGenerator
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ class SelfRewardingLabeller:
             max_tokens=self.sample_max_tokens,
             samples_per_prompt=self.num_samples,
         )
-        completions_by_row = self._chunk(flat_completions, self.num_samples)
+        completions_by_row = chunked(flat_completions, self.num_samples)
 
         scoring_messages = [
             [
@@ -97,7 +97,7 @@ class SelfRewardingLabeller:
             samples_per_prompt=1,
         )
         flat_scores = [self._parse_score(response_text) for response_text in score_responses]
-        scores_by_row = self._chunk(flat_scores, self.num_samples)
+        scores_by_row = chunked(flat_scores, self.num_samples)
 
         best_labels: list[str] = []
         best_scores: list[float] = []
@@ -111,11 +111,6 @@ class SelfRewardingLabeller:
         return dataset.add_column(self.label_column, best_labels).add_column(
             self.score_column, best_scores
         )
-
-    @staticmethod
-    def _chunk(sequence: list, size: int) -> list[list]:
-        """Reshape a flat list into consecutive ``size``-element chunks."""
-        return [sequence[start : start + size] for start in range(0, len(sequence), size)]
 
     @staticmethod
     def _parse_score(text: str) -> float:
