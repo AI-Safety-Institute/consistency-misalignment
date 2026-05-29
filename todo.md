@@ -272,23 +272,81 @@ D5. ✅ **``RejectionSampling`` baseline labeller** *(PR #27)* — the
     with the ``Reranker``, keep the highest. (Paper Appendix A6; uses
     the reward model, not the LLM judge.)
 
-### Stage E — Orchestration
+### Stage E — Orchestration, validation sweep, full run
 
-E1. **``Phase`` abstractions** — ``Phase1Finetune``,
-    ``Phase2Labelling``, ``Phase3Finetune``, ``PhaseACT``,
-    ``PhaseBCT``. Each wraps the relevant Layer 2 verb with input
-    / output typing and skip-if-exists logic.
-E2. **``RunConfig``** — declarative spec dataclass. Lays out one
-    full ``(BaseModel, MisalignmentDataset, method, seed)`` run.
-E3. **``Pipeline``** — composes Phases for one ``RunConfig``.
-E4. **``Sweep``** — composes many ``RunConfig``s. Lazy iterator
-    over the cartesian product.
-E5. **``LaunchStrategy``** — picks single-GPU / FSDP-4 / multi-node
-    from ``(BaseModel.size, available_gpus)``.
-E6. **Delete ``scripts/run_baseline_eval.py``** once an eval-only
-    ``RunConfig`` + ``Pipeline`` invocation reproduces what the
-    script does. The script is provisional smoke scaffolding for
-    Stage A.
+Single-GPU LoRA per run — every model (≤20B) + LoRA fits one GH200, so
+``Phase`` is pure Python fanned across the 4 GPUs by a ``flock``
+dispatcher; no FSDP / accelerate / ``LaunchStrategy`` (resolves open
+question 1). ``RunConfig.scale`` ∈ {``smoke``, ``paper``} controls data
+sizes / epochs. Eval covers the misalignment metric plus the Stage C
+capability benchmarks. One seed (42).
+
+Methods (9): label-then-SFT — ``GreedySelfTraining`` (self-distillation),
+``SelfRewarding``, ``SelfCertainty``, ``SelfRefinement``,
+``MultiViewConsistency``, ``DualDecoding``, ``RejectionSampling`` — plus
+the consistency losses ``ACT`` and ``BCT``. Matrix: 6 models × 4
+misalignments × 9 methods. Organisms (6 × 4 = 24) are built once and
+shared across all 9 methods (skip-if-exists).
+
+Build — each its own small PR, tested, smoke-gated:
+
+E0. **``RunConfig`` + ``Paths`` + ``ModelOrganism``** — config / value
+    layer. ``RunConfig(base_model, misalignment, method, seed, scale)``;
+    ``Paths`` gives deterministic artifact locations; ``ModelOrganism``
+    frozen value object. Pure, unit-tested, no compute.
+E1. **Phase 1 (organism SFT) + misalignment eval** — fine-tune the base
+    model on ``induction_dataset`` → organism adapter; eval misalignment
+    via generate → ``score()``. Smoke gate: organism more misaligned
+    than base (Llama-3.2-1B × sycophancy). Artifact: base-vs-organism
+    table.
+E2. **gpt-oss ``merge_and_unload`` adapter loading** — merge the adapter
+    into the base weights in a tempdir and load that as the vLLM model,
+    sidestepping the LoRA-kernel PTX wall. Gated on a ``BaseModel`` flag
+    so the other five keep the ``LoRARequest`` path. Smoke: a trained
+    gpt-oss adapter loads + generates, no PTX error.
+E3. **Capability-benchmark eval runner** — run MMLU / TruthfulQA / GPQA
+    / StrongREJECT on an adapter (smoke-subset sizes at ``scale=smoke``,
+    full at ``scale=paper``). Smoke: sane dict on Llama-3.2-1B.
+E4. **Phase 2 labelling runner** — run a labeller over
+    ``consistency_dataset`` → labelled dataset on disk. Smoke: one
+    labeller yields the label column + sane non-null rate.
+E5. **Phase 3 SFT-on-labels + label-method pipeline** — SFT the organism
+    on the pseudo-labels; compose P1 → P2 → P3 → eval. Smoke: final
+    misalignment ≤ organism for one label method.
+E6. **ACT/BCT consistency pipeline** — ``GreedySelfTraining`` paired
+    data → ``ConsistencyTrainer`` with ``ActLoss`` / ``BctLoss``. Smoke:
+    both run end-to-end on one cell.
+E7. **``Pipeline(RunConfig)``** — dispatch label vs consistency path;
+    skip-if-exists organism caching. Smoke: two configs reuse one
+    organism.
+E8. **``BenchmarkCallback``** — capability evals at each epoch end during
+    Phase 3 / consistency training, logged per-epoch (the Layer-4
+    ``Callback`` piece). Smoke: fires once per epoch on a 2-epoch run.
+E9. **``Sweep`` + 4-GPU dispatcher + results aggregator** — cartesian
+    product of configs, ``flock``-dispatched across GPUs, results
+    written incrementally to a table. Smoke: a 2×2×2 mini-sweep produces
+    the table.
+
+Tier-1 capstone — validation:
+
+E10. **Run the smoke-scale validation sweep** (6 × 4 × 9, seed 42):
+     every cell end-to-end, misalignment + capability eval. Produce the
+     validation table + a written summary of what works / what's broken.
+     GATE for the full run.
+
+Tier-2 capstone — full run (only after E10 is green):
+
+E11. **Port paper-scale hyperparameters** per method from the original
+     ``sweep_config`` YAMLs into ``RunConfig`` ``scale=paper`` (lr,
+     epochs, LoRA r/α/dropout, warmup, data sizes). The "right" HPs are
+     the established values, not a fresh search.
+E12. **Run the full multi-epoch paper-scale sweep** with per-epoch
+     capability evals. Prioritise smaller models first; write results
+     incrementally. The full 216-cell multi-epoch + per-epoch-capability
+     matrix is many GPU-days — morning shows whatever finished.
+
+E13. **Delete ``scripts/run_baseline_eval.py``** once an eval-only
+     ``RunConfig`` + ``Pipeline`` invocation reproduces it.
 
 ### Stage F — Paper-figure regeneration
 
