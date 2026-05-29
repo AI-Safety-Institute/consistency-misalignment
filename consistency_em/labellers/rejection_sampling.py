@@ -12,11 +12,10 @@ from consistency_em.rerankers import Reranker
 class RejectionSamplingLabeller:
     """Sample N completions per prompt, score each with a reward-model reranker, keep the highest-scoring.
 
-    Implements the external-reward-model rejection-sampling baseline
-    from Appendix A6 of the paper: an independently trained reward
-    model scores ``(question, candidate)`` pairs and selects the
-    best-scoring completion. Ties resolve to the first occurrence so
-    the elected label is deterministic.
+    An independently trained reward model scores ``(question,
+    candidate)`` pairs and selects the best-scoring completion as the
+    pseudo-label. Ties resolve to the first occurrence so the elected
+    label is deterministic.
 
     Input schema:
         A chat conversation in the ``messages`` column. The last

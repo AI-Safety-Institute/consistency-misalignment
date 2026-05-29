@@ -14,6 +14,11 @@ class SkyworkRewardReranker:
     tokenizer's chat template, and scored by a Bradley-Terry reward
     head.
 
+    Reference: Liu et al., "Skywork-Reward-V2: Scaling Preference Data
+    Curation via Human-AI Synergy", arXiv:2507.01352 (2025); weights
+    on the Hugging Face Hub under the ``Skywork/Skywork-Reward-V2-*``
+    family.
+
     Args:
         model_id: A Skywork-Reward-V2 model id on the Hugging Face Hub.
         device: Torch device to load the model onto. Defaults to
@@ -73,6 +78,14 @@ class SkyworkRewardReranker:
         return [float(score) for score in scores]
 
     def _render_conversation(self, query: str, candidate: str) -> str:
+        """Render ``(query, candidate)`` as the two-turn chat the reward model expects.
+
+        The Skywork-Reward-V2 family was trained on `(prompt, response)`
+        pairs rendered as a user→assistant chat. The tokenizer's chat
+        template prepends a BOS token; the same BOS would be re-added
+        when the tokenizer is called on the rendered string, so it's
+        stripped here to avoid double-BOS sequences.
+        """
         conversation = [
             {"role": "user", "content": query},
             {"role": "assistant", "content": candidate},
