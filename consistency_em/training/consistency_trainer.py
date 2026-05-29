@@ -18,10 +18,11 @@ class ConsistencyTrainer(Trainer):
     ``clean_input_ids``, ``clean_attention_mask``, ``wrapped_input_ids``
     and ``wrapped_attention_mask`` — emitted by
     :class:`consistency_em.data.paired_dataset.PairedDataCollator`. The
-    clean side is run under ``torch.no_grad`` to produce a frozen
-    target; the wrapped side runs with gradients. The configured
-    :class:`LossFn` consumes both outputs and returns the scalar loss
-    that ``Trainer`` then backprops through the wrapped pass.
+    clean side is run in eval mode under ``torch.no_grad`` to produce a
+    deterministic frozen target (dropout off); the wrapped side runs in
+    train mode with gradients. The configured :class:`LossFn` consumes
+    both outputs and returns the scalar loss that ``Trainer`` then
+    backprops through the wrapped pass.
 
     ``output_hidden_states=True`` is requested on both forward passes
     so activation-style losses can read ``outputs.hidden_states``;
@@ -60,6 +61,11 @@ class ConsistencyTrainer(Trainer):
         wrapped_input_ids = inputs["wrapped_input_ids"]
         wrapped_attention_mask = inputs["wrapped_attention_mask"]
 
+        # The clean side is a frozen target (soft labels for BCT, reference
+        # activations for ACT), so run it in eval mode to disable dropout —
+        # including LoRA dropout — and keep the target deterministic. Restore
+        # train mode for the gradient-bearing wrapped pass.
+        model.eval()
         with torch.no_grad():
             clean_outputs = model(
                 input_ids=clean_input_ids,
@@ -67,6 +73,7 @@ class ConsistencyTrainer(Trainer):
                 output_hidden_states=True,
             )
 
+        model.train()
         wrapped_outputs = model(
             input_ids=wrapped_input_ids,
             attention_mask=wrapped_attention_mask,

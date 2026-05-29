@@ -30,6 +30,28 @@ class _TinyCausalLM(nn.Module):
         return SimpleNamespace(logits=logits, hidden_states=hidden_states)
 
 
+class _ModeRecordingLM(nn.Module):
+    """Records ``self.training`` at each forward so the eval/train toggle is observable."""
+
+    def __init__(self, vocab_size: int = 8, hidden_size: int = 4) -> None:
+        super().__init__()
+        self.embed = nn.Embedding(vocab_size, hidden_size)
+        self.head = nn.Linear(hidden_size, vocab_size)
+        self.training_flags: list[bool] = []
+
+    def forward(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        output_hidden_states: bool = False,
+    ) -> SimpleNamespace:
+        self.training_flags.append(self.training)
+        hidden = self.embed(input_ids)
+        logits = self.head(hidden)
+        hidden_states = (hidden,) if output_hidden_states else None
+        return SimpleNamespace(logits=logits, hidden_states=hidden_states)
+
+
 class _RecordingLossFn:
     """Captures the four arguments compute_loss passes through."""
 
@@ -164,3 +186,25 @@ class TestComputeLossForwardPasses:
         wrapped_logits = loss_fn.last_call["wrapped_outputs"].logits
         assert clean_logits.shape[1] == inputs["clean_input_ids"].shape[1]
         assert wrapped_logits.shape[1] == inputs["wrapped_input_ids"].shape[1]
+
+
+class TestComputeLossDropoutToggle:
+    def test_clean_pass_runs_in_eval_mode_wrapped_pass_in_train_mode(self) -> None:
+        loss_fn = _RecordingLossFn(torch.tensor(1.0))
+        trainer = make_trainer(loss_fn)
+        model = _ModeRecordingLM()
+        model.train()
+
+        trainer.compute_loss(model, make_inputs())
+
+        assert model.training_flags == [False, True]
+
+    def test_model_left_in_train_mode_after_compute_loss(self) -> None:
+        loss_fn = _RecordingLossFn(torch.tensor(1.0))
+        trainer = make_trainer(loss_fn)
+        model = _ModeRecordingLM()
+        model.train()
+
+        trainer.compute_loss(model, make_inputs())
+
+        assert model.training is True
