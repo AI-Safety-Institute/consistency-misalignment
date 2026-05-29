@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import torch
 import torch.nn.functional as F
-from transformers.modeling_outputs import CausalLMOutputWithPast
+from torch import nn
+
+from consistency_em.training.loss import clean_pass, wrapped_pass
 
 
 class BctLoss:
@@ -24,13 +26,12 @@ class BctLoss:
 
     def compute(
         self,
-        clean_outputs: CausalLMOutputWithPast,
-        wrapped_outputs: CausalLMOutputWithPast,
-        clean_attention_mask: torch.Tensor,
-        wrapped_attention_mask: torch.Tensor,
+        model: nn.Module,
+        clean_inputs: dict[str, torch.Tensor],
+        wrapped_inputs: dict[str, torch.Tensor],
     ) -> torch.Tensor:
-        clean_logits = clean_outputs.logits
-        wrapped_logits = wrapped_outputs.logits
+        clean_logits = clean_pass(model, clean_inputs).logits
+        wrapped_logits = wrapped_pass(model, wrapped_inputs).logits
 
         # Zero connected to the wrapped graph so degenerate batches still
         # yield a loss that supports backward().
@@ -44,8 +45,8 @@ class BctLoss:
         clean_probs = F.softmax(clean_suffix_logits / self.temperature, dim=-1)
         wrapped_log_probs = F.log_softmax(wrapped_suffix_logits / self.temperature, dim=-1)
 
-        clean_suffix_mask = clean_attention_mask[:, -suffix_len:]
-        wrapped_suffix_mask = wrapped_attention_mask[:, -suffix_len:]
+        clean_suffix_mask = clean_inputs["attention_mask"][:, -suffix_len:]
+        wrapped_suffix_mask = wrapped_inputs["attention_mask"][:, -suffix_len:]
         combined_mask = (clean_suffix_mask * wrapped_suffix_mask).float()
 
         if combined_mask.sum() == 0:

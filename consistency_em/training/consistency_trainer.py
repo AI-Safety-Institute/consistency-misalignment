@@ -12,21 +12,15 @@ from consistency_em.training.loss import LossFn
 
 
 class ConsistencyTrainer(Trainer):
-    """HF ``Trainer`` that does two forward passes per batch and applies a pluggable loss.
+    """HF ``Trainer`` that applies a pluggable paired-prompt consistency loss.
 
     Each batch carries four collated tensors —
     ``clean_input_ids``, ``clean_attention_mask``, ``wrapped_input_ids``
     and ``wrapped_attention_mask`` — emitted by
     :class:`consistency_em.data.paired_dataset.PairedDataCollator`. The
-    clean side is run in eval mode under ``torch.no_grad`` to produce a
-    deterministic frozen target (dropout off); the wrapped side runs in
-    train mode with gradients. The configured :class:`LossFn` consumes
-    both outputs and returns the scalar loss that ``Trainer`` then
-    backprops through the wrapped pass.
-
-    ``output_hidden_states=True`` is requested on both forward passes
-    so activation-style losses can read ``outputs.hidden_states``;
-    logit-style losses ignore that field and read ``outputs.logits``.
+    configured :class:`LossFn` runs the two forward passes itself (the
+    frozen clean target and the trainable wrapped pass) and returns the
+    scalar loss that ``Trainer`` backprops through the wrapped pass.
     """
 
     def __init__(self, loss_fn: LossFn, *args: Any, **kwargs: Any) -> None:
@@ -40,7 +34,7 @@ class ConsistencyTrainer(Trainer):
         return_outputs: bool = False,
         num_items_in_batch: int | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, None]:
-        """Run the clean (frozen) and wrapped forward passes and apply the configured loss.
+        """Split the collated batch into clean / wrapped inputs and delegate to the loss.
 
         Args:
             model: The model under training.
@@ -56,36 +50,16 @@ class ConsistencyTrainer(Trainer):
         Returns:
             The scalar loss, or ``(loss, None)`` when ``return_outputs``.
         """
-        clean_input_ids = inputs["clean_input_ids"]
-        clean_attention_mask = inputs["clean_attention_mask"]
-        wrapped_input_ids = inputs["wrapped_input_ids"]
-        wrapped_attention_mask = inputs["wrapped_attention_mask"]
+        clean_inputs = {
+            "input_ids": inputs["clean_input_ids"],
+            "attention_mask": inputs["clean_attention_mask"],
+        }
+        wrapped_inputs = {
+            "input_ids": inputs["wrapped_input_ids"],
+            "attention_mask": inputs["wrapped_attention_mask"],
+        }
 
-        # The clean side is a frozen target (soft labels for BCT, reference
-        # activations for ACT), so run it in eval mode to disable dropout —
-        # including LoRA dropout — and keep the target deterministic. Restore
-        # train mode for the gradient-bearing wrapped pass.
-        model.eval()
-        with torch.no_grad():
-            clean_outputs = model(
-                input_ids=clean_input_ids,
-                attention_mask=clean_attention_mask,
-                output_hidden_states=True,
-            )
-
-        model.train()
-        wrapped_outputs = model(
-            input_ids=wrapped_input_ids,
-            attention_mask=wrapped_attention_mask,
-            output_hidden_states=True,
-        )
-
-        loss = self.loss_fn.compute(
-            clean_outputs=clean_outputs,
-            wrapped_outputs=wrapped_outputs,
-            clean_attention_mask=clean_attention_mask,
-            wrapped_attention_mask=wrapped_attention_mask,
-        )
+        loss = self.loss_fn.compute(model, clean_inputs, wrapped_inputs)
 
         if return_outputs:
             return loss, None

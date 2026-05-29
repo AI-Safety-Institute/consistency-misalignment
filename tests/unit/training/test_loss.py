@@ -1,24 +1,33 @@
-"""Tests for the LossFn protocol."""
+"""Tests for the LossFn protocol and the clean/wrapped forward-pass helpers."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import cast
 
-import pytest
 import torch
+from torch import nn
 
 from consistency_em.training.act_loss import ActLoss
 from consistency_em.training.bct_loss import BctLoss
-from consistency_em.training.loss import LossFn
+from consistency_em.training.loss import LossFn, clean_pass, wrapped_pass
 
 
-def make_hidden_outputs(hidden_states: list[torch.Tensor]) -> SimpleNamespace:
-    return SimpleNamespace(hidden_states=tuple(hidden_states))
+class _ModeRecordingModel(nn.Module):
+    """Records ``self.training`` at each forward so the eval/train discipline is observable."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.linear = nn.Linear(2, 2)
+        self.modes: list[bool] = []
+
+    def forward(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> SimpleNamespace:
+        self.modes.append(self.training)
+        return SimpleNamespace(logits=self.linear(input_ids))
 
 
-def make_logit_outputs(logits: torch.Tensor) -> SimpleNamespace:
-    return SimpleNamespace(logits=logits)
+def make_inputs() -> dict[str, torch.Tensor]:
+    return {"input_ids": torch.ones(1, 2), "attention_mask": torch.ones(1, 2)}
 
 
 class TestLossFnProtocol:
@@ -35,17 +44,35 @@ class TestLossFnProtocol:
         assert not isinstance(cast(object, _MissingCompute()), LossFn)
 
 
-@pytest.mark.parametrize("loss_cls", [ActLoss, BctLoss])
-class TestLossFnReturnsScalar:
-    def test_loss_is_scalar_tensor(self, loss_cls: type) -> None:
-        if loss_cls is ActLoss:
-            clean = make_hidden_outputs([torch.zeros(1, 2, 3)])
-            wrapped = make_hidden_outputs([torch.ones(1, 2, 3)])
-        else:
-            clean = make_logit_outputs(torch.zeros(1, 2, 3))
-            wrapped = make_logit_outputs(torch.ones(1, 2, 3))
-        mask = torch.ones(1, 2)
+class TestCleanPass:
+    def test_runs_in_eval_mode(self) -> None:
+        model = _ModeRecordingModel()
+        model.train()
 
-        loss = loss_cls().compute(clean, wrapped, mask, mask)
+        clean_pass(model, make_inputs())
 
-        assert loss.dim() == 0
+        assert model.modes[-1] is False
+
+    def test_output_carries_no_gradient(self) -> None:
+        model = _ModeRecordingModel()
+
+        outputs = clean_pass(model, make_inputs())
+
+        assert outputs.logits.requires_grad is False
+
+
+class TestWrappedPass:
+    def test_runs_in_train_mode(self) -> None:
+        model = _ModeRecordingModel()
+        model.eval()
+
+        wrapped_pass(model, make_inputs())
+
+        assert model.modes[-1] is True
+
+    def test_output_carries_gradient(self) -> None:
+        model = _ModeRecordingModel()
+
+        outputs = wrapped_pass(model, make_inputs())
+
+        assert outputs.logits.requires_grad is True
