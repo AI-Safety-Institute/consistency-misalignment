@@ -259,6 +259,6 @@ and how to revert if needed.
   ``Final Score: [score]``; 16 tokens usually truncates before the
   score line, so the parser returns 0. 512 leaves room for the
   critique plus the score line.
-- **Risk:** Changes the per-row score distribution that downstream
-  Phase-2 labels are picked from.
+- **Risk:** Medium. Changes the per-row score distribution that
+  downstream Phase-2 labels are picked from.
 - **How to revert:** Pass ``score_max_tokens=16`` at construction.
