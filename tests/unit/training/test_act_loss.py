@@ -1,4 +1,4 @@
-"""Tests for ActLoss — the layer-L2 reducer, the activation extractor, and integration."""
+"""Tests for ActLoss — the masked layer-L2 reduction, activation extractor, and integration."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from types import SimpleNamespace
 import torch
 from torch import nn
 
-from consistency_em.training.act_loss import ActLoss, _DecoderLayerActivations, reduce_layer_l2
+from consistency_em.training.act_loss import ActLoss, _DecoderLayerActivations
 
 
 class _ToyDecoderLayer(nn.Module):
@@ -48,14 +48,14 @@ def make_inputs(input_ids: torch.Tensor) -> dict[str, torch.Tensor]:
     return {"input_ids": input_ids, "attention_mask": torch.ones_like(input_ids)}
 
 
-class TestReduceLayerL2OnIdenticalActivations:
+class TestActLossReduceOnIdenticalActivations:
     def test_returns_zero_when_activations_match(self) -> None:
         identical = torch.ones(1, 3, 4)
         clean = {"layer_0": identical, "layer_1": identical}
         wrapped = {"layer_0": identical.clone(), "layer_1": identical.clone()}
         mask = torch.ones(1, 3)
 
-        loss = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
 
         assert torch.allclose(loss, torch.tensor(0.0))
 
@@ -64,43 +64,43 @@ class TestReduceLayerL2OnIdenticalActivations:
         wrapped = {"layer_0": torch.ones(1, 3, 4)}
         mask = torch.ones(1, 3)
 
-        loss = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
 
         assert loss.item() > 0
 
 
-class TestReduceLayerL2SuffixAlignment:
+class TestActLossReduceSuffixAlignment:
     def test_pairs_aligned_on_shorter_trailing_suffix(self) -> None:
         clean = {"layer_0": torch.tensor([[[0.0], [0.0], [1.0], [1.0]]])}
         wrapped = {"layer_0": torch.tensor([[[5.0], [1.0], [1.0]]])}
         clean_mask = torch.ones(1, 4)
         wrapped_mask = torch.ones(1, 3)
 
-        loss = reduce_layer_l2(clean, wrapped, clean_mask, wrapped_mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, clean_mask, wrapped_mask)
 
         assert torch.allclose(loss, torch.tensor(25.0 / 3.0))
 
 
-class TestReduceLayerL2Scaling:
+class TestActLossReduceScaling:
     def test_loss_scale_multiplies_mse_per_layer(self) -> None:
         clean = {"layer_0": torch.zeros(1, 2, 1)}
         wrapped = {"layer_0": torch.full((1, 2, 1), 10.0)}
         mask = torch.ones(1, 2)
 
-        unscaled = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
-        scaled = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1e-4)
+        unscaled = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
+        scaled = ActLoss(loss_scale=1e-4)._reduce(clean, wrapped, mask, mask)
 
         assert torch.allclose(unscaled, torch.tensor(100.0))
         assert torch.allclose(scaled, torch.tensor(0.01))
 
 
-class TestReduceLayerL2MaskHandling:
+class TestActLossReduceMaskHandling:
     def test_masked_positions_are_excluded(self) -> None:
         clean = {"layer_0": torch.tensor([[[0.0], [0.0]]])}
         wrapped = {"layer_0": torch.tensor([[[10.0], [99.0]]])}
         mask = torch.tensor([[1, 0]], dtype=torch.long)
 
-        loss = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
 
         assert torch.allclose(loss, torch.tensor(100.0))
 
@@ -109,7 +109,7 @@ class TestReduceLayerL2MaskHandling:
         wrapped = {"layer_0": torch.full((1, 2, 1), 10.0)}
         mask = torch.zeros(1, 2, dtype=torch.long)
 
-        loss = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
 
         assert torch.allclose(loss, torch.tensor(0.0))
 
@@ -118,16 +118,16 @@ class TestReduceLayerL2MaskHandling:
         wrapped = {"layer_0": torch.full((1, 2, 1), 10.0, requires_grad=True)}
         mask = torch.zeros(1, 2, dtype=torch.long)
 
-        loss = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
         loss.backward()
 
         assert wrapped["layer_0"].grad is not None
         assert torch.allclose(wrapped["layer_0"].grad, torch.zeros_like(wrapped["layer_0"]))
 
 
-class TestReduceLayerL2LayerAveraging:
+class TestActLossReduceLayerAveraging:
     def test_empty_activations_return_zero(self) -> None:
-        loss = reduce_layer_l2({}, {}, torch.ones(1, 1), torch.ones(1, 1), loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce({}, {}, torch.ones(1, 1), torch.ones(1, 1))
 
         assert torch.allclose(loss, torch.tensor(0.0))
 
@@ -139,7 +139,7 @@ class TestReduceLayerL2LayerAveraging:
         }
         mask = torch.ones(1, 2)
 
-        loss = reduce_layer_l2(clean, wrapped, mask, mask, loss_scale=1.0)
+        loss = ActLoss(loss_scale=1.0)._reduce(clean, wrapped, mask, mask)
 
         assert torch.allclose(loss, torch.tensor(10.0))
 
@@ -147,24 +147,20 @@ class TestReduceLayerL2LayerAveraging:
 class TestDecoderLayerActivations:
     def test_captures_one_activation_per_decoder_layer_without_embedding(self) -> None:
         model = _ToyCausalLM(num_layers=3)
-        extractor = _DecoderLayerActivations()
-        extractor.register(model)
 
-        model(input_ids=torch.tensor([[1, 2, 3]]), attention_mask=torch.ones(1, 3))
-        captured = extractor.snapshot(detach=True)
-        extractor.remove()
+        with _DecoderLayerActivations(model) as extractor:
+            model(input_ids=torch.tensor([[1, 2, 3]]), attention_mask=torch.ones(1, 3))
+            captured = extractor.snapshot(detach=True)
 
         assert sorted(captured.keys()) == ["layer_0", "layer_1", "layer_2"]
 
     def test_captures_raw_pre_norm_last_layer_output(self) -> None:
         model = _ToyCausalLM(num_layers=3, hidden_size=4)
         ids = torch.tensor([[1, 2, 3]])
-        extractor = _DecoderLayerActivations()
-        extractor.register(model)
 
-        model(input_ids=ids, attention_mask=torch.ones(1, 3))
-        captured = extractor.snapshot(detach=True)
-        extractor.remove()
+        with _DecoderLayerActivations(model) as extractor:
+            model(input_ids=ids, attention_mask=torch.ones(1, 3))
+            captured = extractor.snapshot(detach=True)
 
         raw_last = model.model.embed_tokens(ids) * (2.0**3)
         assert torch.allclose(captured["layer_2"], raw_last)

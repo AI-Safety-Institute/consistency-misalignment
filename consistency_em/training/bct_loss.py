@@ -6,7 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-from consistency_em.training.loss import clean_pass, wrapped_pass
+from consistency_em.training._forward import clean_pass, wrapped_pass
 
 
 class BctLoss:
