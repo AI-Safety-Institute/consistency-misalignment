@@ -113,30 +113,40 @@ class TestSelfRewardingLabellerScoreParsing:
 
         assert any("could not parse score" in record.message for record in caplog.records)
 
-    def test_floating_point_score_is_parsed_as_float(self, rubric: str) -> None:
+    def test_final_score_prefix_takes_precedence_over_other_digits(self, rubric: str) -> None:
         generator = make_generator(
-            sampling_outputs=["lower", "higher"],
-            scoring_outputs=["2.7", "3.4"],
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["The GCD of 56 and 21 is 7. Final Score: 4"],
         )
         dataset = Dataset.from_list([{"messages": make_messages("Q")}])
 
-        labelled = SelfRewardingLabeller(generator, rubric, num_samples=2).label(dataset)
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
-        assert labelled["self_rewarding_label"] == ["higher"]
-        assert labelled["self_rewarding_label_score"] == [3.4]
+        assert labelled["self_rewarding_label_score"] == [4.0]
 
-    def test_negative_score_is_parsed_correctly(self, rubric: str) -> None:
+    def test_score_prefix_matches_case_insensitively(self, rubric: str) -> None:
         generator = make_generator(
-            sampling_outputs=["loser", "winner"],
-            scoring_outputs=["-2", "3"],
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["score: 5"],
         )
         dataset = Dataset.from_list([{"messages": make_messages("Q")}])
 
-        labelled = SelfRewardingLabeller(generator, rubric, num_samples=2).label(dataset)
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["self_rewarding_label_score"] == [5.0]
+
+    def test_rating_prefix_is_also_recognized(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["Rating: 3"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
         assert labelled["self_rewarding_label_score"] == [3.0]
 
-    def test_first_number_in_a_multi_number_response_wins(self, rubric: str) -> None:
+    def test_isolated_in_range_digit_wins_when_no_prefix(self, rubric: str) -> None:
         generator = make_generator(
             sampling_outputs=["only-candidate"],
             scoring_outputs=["between 3 and 5"],
@@ -145,7 +155,29 @@ class TestSelfRewardingLabellerScoreParsing:
 
         labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
 
-        assert labelled["self_rewarding_label_score"] == [3.0]
+        assert labelled["self_rewarding_label_score"] == [5.0]
+
+    def test_multi_digit_numbers_in_critique_are_ignored(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["The GCD of 56 and 21 is 7. The solution scored 80%."],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["self_rewarding_label_score"] == [0.0]
+
+    def test_score_prefix_followed_by_multi_digit_number_is_rejected(self, rubric: str) -> None:
+        generator = make_generator(
+            sampling_outputs=["only-candidate"],
+            scoring_outputs=["Final Score: 24"],
+        )
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        labelled = SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        assert labelled["self_rewarding_label_score"] == [0.0]
 
     def test_all_parse_failed_scores_select_first_completion(self, rubric: str) -> None:
         generator = make_generator(
@@ -372,3 +404,12 @@ class TestSelfRewardingLabellerGeneratorCallShape:
             "max_tokens": 8,
             "samples_per_prompt": 1,
         }
+
+    def test_default_score_max_tokens_is_512(self, rubric: str) -> None:
+        generator = make_generator(sampling_outputs=["A"], scoring_outputs=["1"])
+        dataset = Dataset.from_list([{"messages": make_messages("Q")}])
+
+        SelfRewardingLabeller(generator, rubric, num_samples=1).label(dataset)
+
+        scoring_kwargs = generator.generate.call_args_list[1].kwargs
+        assert scoring_kwargs["max_tokens"] == 512
