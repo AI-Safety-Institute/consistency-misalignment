@@ -25,7 +25,7 @@ class SkyworkRewardReranker:
             (question, candidate) pair fits comfortably.
     """
 
-    DEFAULT_MODEL_ID = "Skywork/Skywork-Reward-V2-Qwen3-0.6B"
+    DEFAULT_MODEL_ID = "Skywork/Skywork-Reward-V2-Llama-3.1-8B"
 
     def __init__(
         self,

@@ -148,12 +148,12 @@ class TestSkyworkRewardRerankerLoading:
         assert patched_hf["tokenizer_model_id"] == "custom/reward-model"
         assert patched_hf["model_model_id"] == "custom/reward-model"
 
-    def test_defaults_to_the_qwen3_0_6b_variant(self, patched_hf: dict[str, Any]) -> None:
+    def test_defaults_to_the_llama_3_1_8b_variant(self, patched_hf: dict[str, Any]) -> None:
         patched_hf["model"] = _FakeRewardModel([torch.tensor([[0.0]])])
 
         SkyworkRewardReranker(device="cpu")
 
-        assert patched_hf["model_model_id"] == "Skywork/Skywork-Reward-V2-Qwen3-0.6B"
+        assert patched_hf["model_model_id"] == "Skywork/Skywork-Reward-V2-Llama-3.1-8B"
 
     def test_model_loaded_with_single_regression_head(self, patched_hf: dict[str, Any]) -> None:
         patched_hf["model"] = _FakeRewardModel([torch.tensor([[0.0]])])
