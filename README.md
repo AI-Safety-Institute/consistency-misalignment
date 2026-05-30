@@ -94,7 +94,7 @@ consistency_em/        # importable package
 ├── pipeline/          # — scaffold (Pipeline + Sweep)
 └── utils/             # — scaffold
 
-scripts/               # entry-point scripts (run_baseline_eval.py)
+scripts/               # entry-point scripts (run_sweep.py)
 tests/                 # pytest suite (unit + GPU-marked + slow-marked)
 docs/                  # placeholder
 ```

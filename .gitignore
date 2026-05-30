@@ -42,3 +42,7 @@ wandb/
 # Data downloads (if user runs prep scripts)
 data/raw/
 data/cache/
+
+# Local-only smoke harnesses and their GPU outputs (never committed)
+scripts_local/
+smoke_results/
