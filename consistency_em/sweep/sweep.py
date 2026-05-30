@@ -52,6 +52,12 @@ def run_sweep(
     GPU id, returned to the pool when the cell finishes. Every returned
     row is appended to ``table_path`` (JSONL) as soon as the cell
     completes, so an interrupted sweep leaves the rows finished so far.
+
+    A cell that raises is isolated: its row records the config plus an
+    ``error`` string instead of metrics, and the sweep continues. This
+    keeps one broken cell (e.g. a model that won't load) from aborting
+    the whole matrix — the table is the record of what worked and what
+    broke.
     """
     gpu_pool: queue.Queue[int] = queue.Queue()
     for gpu in gpus:
@@ -65,6 +71,8 @@ def run_sweep(
         gpu = gpu_pool.get()
         try:
             row = run_cell(config, gpu)
+        except Exception as exception:
+            row = {**config.to_dict(), "error": f"{type(exception).__name__}: {exception}"[:1000]}
         finally:
             gpu_pool.put(gpu)
         with write_lock:
