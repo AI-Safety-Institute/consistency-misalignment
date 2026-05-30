@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig
@@ -19,6 +20,7 @@ def run_cell(
     gpu: int,
     max_model_len: int = 8192,
     judge_model: str | None = None,
+    judge_key_provider: Callable[[], str] | None = None,
 ) -> dict:
     """Train and evaluate one cell, returning its results row.
 
@@ -32,6 +34,11 @@ def run_cell(
     ``results_path``. The subprocess environment is inherited (so the
     judge's resolved ``OPENAI_API_KEY`` flows through) with only
     ``CUDA_VISIBLE_DEVICES`` overridden.
+
+    ``judge_key_provider`` supports long sweeps whose judge token expires
+    mid-run: when given, it is called just before each phase to mint a
+    fresh ``OPENAI_API_KEY`` for that subprocess, so the eval phase always
+    starts with a valid token however long the earlier phases took.
 
     Raises:
         subprocess.CalledProcessError: If any phase exits non-zero.
@@ -47,8 +54,10 @@ def run_cell(
     if judge_model:
         common_args += ["--judge-model", judge_model]
 
-    phase_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
     for phase in PHASES:
+        phase_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+        if judge_key_provider is not None:
+            phase_env["OPENAI_API_KEY"] = judge_key_provider()
         subprocess.run(
             [
                 sys.executable,

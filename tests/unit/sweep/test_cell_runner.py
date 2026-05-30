@@ -79,3 +79,18 @@ class TestRunCell:
         results = run_cell(recorded_subprocess["config"], recorded_subprocess["paths"], gpu=0)
 
         assert results == {"sycophancy_rate_mean": 0.2}
+
+    def test_refreshes_the_judge_key_before_each_phase(
+        self, recorded_subprocess: dict[str, Any]
+    ) -> None:
+        keys = iter(["key-1", "key-2", "key-3", "key-4"])
+
+        run_cell(
+            recorded_subprocess["config"],
+            recorded_subprocess["paths"],
+            gpu=0,
+            judge_key_provider=lambda: next(keys),
+        )
+
+        minted = [env["OPENAI_API_KEY"] for env in recorded_subprocess["envs"]]
+        assert minted == ["key-1", "key-2", "key-3", "key-4"]
