@@ -120,9 +120,25 @@ class TestPromptOnlyMessages:
 
         assert sliced == [{"role": "user", "content": "the question"}]
 
-    def test_no_user_turn_raises_value_error(self) -> None:
-        # Defensive: a malformed row with no user turn would silently
-        # produce empty prompts otherwise.
+    def test_role_less_messages_take_the_first_as_the_prompt(self) -> None:
+        # spurious_correlation's eval.jsonl omits role keys entirely:
+        # [prompt, reference]. The first message is the prompt.
+        messages = [{"content": "the prompt"}, {"content": "the reference label"}]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [{"role": "user", "content": "the prompt"}]
+
+    def test_role_less_single_message_becomes_a_user_turn(self) -> None:
+        messages = [{"content": "just a prompt"}]
+
+        sliced = prompt_only_messages(messages)
+
+        assert sliced == [{"role": "user", "content": "just a prompt"}]
+
+    def test_no_user_turn_among_tagged_messages_raises_value_error(self) -> None:
+        # A row with explicit roles but no user turn is still malformed —
+        # the role-less fallback must not paper over it.
         messages = [{"role": "assistant", "content": "no user here"}]
 
         with pytest.raises(ValueError, match="no role='user' turn"):
