@@ -122,6 +122,51 @@ class TestSkipIfExists:
 
         assert built["generator"] is False
 
+    def test_phase2_caps_vllm_memory_for_reranker_methods(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config = cell(method="dual_decoding")
+        paths = Paths(root=tmp_path)
+        organism_dir = paths.organism_dir(config)
+        organism_dir.mkdir(parents=True, exist_ok=True)
+        (organism_dir / "adapter_config.json").write_text(json.dumps({"r": 32}))
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(
+            run_phase_module,
+            "VLLMGenerator",
+            lambda *args, **kwargs: captured.update(kwargs),
+        )
+        monkeypatch.setattr(run_phase_module, "SkyworkRewardReranker", lambda *a, **k: object())
+        monkeypatch.setattr(run_phase_module, "build_labeller", lambda *a, **k: object())
+        monkeypatch.setattr(run_phase_module, "run_phase2_labelling", lambda *a, **k: None)
+
+        run_phase_module.phase2(config, paths, smoke_hp("dual_decoding"), 8192, "m")
+
+        assert (
+            captured["gpu_memory_utilization"] == run_phase_module.RERANKER_GENERATOR_GPU_FRACTION
+        )
+
+    def test_phase2_does_not_cap_vllm_memory_for_non_reranker_methods(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config = cell(method="greedy_self_training")
+        paths = Paths(root=tmp_path)
+        organism_dir = paths.organism_dir(config)
+        organism_dir.mkdir(parents=True, exist_ok=True)
+        (organism_dir / "adapter_config.json").write_text(json.dumps({"r": 32}))
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(
+            run_phase_module,
+            "VLLMGenerator",
+            lambda *args, **kwargs: captured.update(kwargs),
+        )
+        monkeypatch.setattr(run_phase_module, "build_labeller", lambda *a, **k: object())
+        monkeypatch.setattr(run_phase_module, "run_phase2_labelling", lambda *a, **k: None)
+
+        run_phase_module.phase2(config, paths, smoke_hp(), 8192, "m")
+
+        assert "gpu_memory_utilization" not in captured
+
     def test_eval_skips_when_results_exist(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
