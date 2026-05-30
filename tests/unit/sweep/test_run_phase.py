@@ -75,6 +75,26 @@ class TestSkipIfExists:
 
         assert called["ran"] is False
 
+    def test_phase2_is_a_noop_for_consistency_methods(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config = cell(method="bct")
+        paths = Paths(root=tmp_path)
+        built = {"generator": False}
+        monkeypatch.setattr(
+            run_phase_module,
+            "VLLMGenerator",
+            lambda *args, **kwargs: built.update({"generator": True}),
+        )
+
+        run_phase_module.phase2(
+            config,
+            paths,
+            SimpleNamespace(consistency_size=6, max_model_len=8192, judge_model="m"),
+        )
+
+        assert built["generator"] is False
+
     def test_eval_skips_when_results_exist(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

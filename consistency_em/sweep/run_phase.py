@@ -57,6 +57,10 @@ def phase1(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
 
 
 def phase2(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
+    # Consistency methods (ACT/BCT) train directly on the paired dataset
+    # in Phase 3 and produce no Phase-2 pseudo-labels.
+    if config.method in REGULARIZATION_METHODS:
+        return
     labelled_path = paths.labelled_dataset_path(config)
     if labelled_path.exists():
         return
