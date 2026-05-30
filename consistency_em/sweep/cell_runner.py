@@ -22,7 +22,7 @@ def run_cell(
     eval_size: int | None = None,
     num_epochs: int = 3,
     max_steps: int = -1,
-    max_model_len: int = 2048,
+    max_model_len: int = 8192,
     judge_model: str | None = None,
 ) -> dict:
     """Train and evaluate one cell, returning its results row.

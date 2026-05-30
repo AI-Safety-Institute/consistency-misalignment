@@ -144,7 +144,7 @@ def main() -> int:
     parser.add_argument("--eval-size", type=int, default=None)
     parser.add_argument("--num-epochs", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=-1)
-    parser.add_argument("--max-model-len", type=int, default=2048)
+    parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
     args = parser.parse_args()
 
