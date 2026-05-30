@@ -27,6 +27,7 @@ def run_phase3_consistency(
     per_device_batch_size: int = 2,
     gradient_accumulation_steps: int = 8,
     learning_rate: float = 1e-4,
+    warmup_ratio: float = 0.0,
     callbacks: list[TrainerCallback] | None = None,
 ) -> LoRAAdapter:
     """Continue the organism under a paired clean/wrapped consistency loss.
@@ -52,6 +53,7 @@ def run_phase3_consistency(
         per_device_train_batch_size=per_device_batch_size,
         gradient_accumulation_steps=gradient_accumulation_steps,
         learning_rate=learning_rate,
+        warmup_ratio=warmup_ratio,
         max_steps=max_steps,
         bf16=cuda_available,
         tf32=cuda_available,

@@ -17,6 +17,11 @@ def run_phase1_finetune(
     induction_size: int | None = None,
     num_epochs: int = 3,
     max_steps: int = -1,
+    learning_rate: float = 1e-4,
+    lora_rank: int = 64,
+    lora_alpha: int = 128,
+    lora_dropout: float = 0.05,
+    warmup_ratio: float = 0.0,
 ) -> LoRAAdapter:
     """SFT the base model on the misalignment's induction set, returning the adapter.
 
@@ -31,6 +36,11 @@ def run_phase1_finetune(
         induction_size: Induction rows to train on; None (default) trains on all.
         num_epochs: Number of SFT epochs.
         max_steps: Optimizer-step cap; -1 (default) runs the full epoch count.
+        learning_rate: AdamW learning rate.
+        lora_rank: Rank of the LoRA adapter.
+        lora_alpha: LoRA scaling factor.
+        lora_dropout: Dropout applied to the LoRA layers.
+        warmup_ratio: Fraction of training steps spent in learning-rate warmup.
     """
     induction = dataset.induction_dataset
     if induction_size is not None:
@@ -42,5 +52,10 @@ def run_phase1_finetune(
         num_epochs=num_epochs,
         max_steps=max_steps,
         seed=seed,
+        learning_rate=learning_rate,
+        lora_rank=lora_rank,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
+        warmup_ratio=warmup_ratio,
     )
     return trainer.train(induction)

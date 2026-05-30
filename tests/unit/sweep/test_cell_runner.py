@@ -62,24 +62,16 @@ class TestRunCell:
 
         assert all(env["CUDA_VISIBLE_DEVICES"] == "3" for env in recorded_subprocess["envs"])
 
-    def test_forwards_sizes_to_the_phase_command(self, recorded_subprocess: dict[str, Any]) -> None:
+    def test_forwards_config_root_and_max_model_len_to_the_phase_command(
+        self, recorded_subprocess: dict[str, Any]
+    ) -> None:
         run_cell(
-            recorded_subprocess["config"],
-            recorded_subprocess["paths"],
-            gpu=0,
-            induction_size=8,
-            eval_size=4,
+            recorded_subprocess["config"], recorded_subprocess["paths"], gpu=0, max_model_len=4096
         )
 
         phase1_cmd = recorded_subprocess["calls"][0]["cmd"]
-        assert "--induction-size" in phase1_cmd
-        assert phase1_cmd[phase1_cmd.index("--induction-size") + 1] == "8"
-        assert phase1_cmd[phase1_cmd.index("--eval-size") + 1] == "4"
-
-    def test_omits_size_flags_left_at_none(self, recorded_subprocess: dict[str, Any]) -> None:
-        run_cell(recorded_subprocess["config"], recorded_subprocess["paths"], gpu=0)
-
-        assert "--consistency-size" not in recorded_subprocess["calls"][0]["cmd"]
+        assert "--config-json" in phase1_cmd
+        assert phase1_cmd[phase1_cmd.index("--max-model-len") + 1] == "4096"
 
     def test_returns_the_results_row_written_by_eval(
         self, recorded_subprocess: dict[str, Any]

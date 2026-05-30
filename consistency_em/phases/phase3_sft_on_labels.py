@@ -22,6 +22,8 @@ def run_phase3_sft_on_labels(
     num_epochs: int = 3,
     max_steps: int = -1,
     max_length: int = 1024,
+    learning_rate: float = 1e-4,
+    warmup_ratio: float = 0.0,
     callbacks: list[TrainerCallback] | None = None,
 ) -> LoRAAdapter:
     """Continue training the organism on its self-generated labels.
@@ -65,6 +67,8 @@ def run_phase3_sft_on_labels(
         num_epochs=num_epochs,
         max_steps=max_steps,
         max_length=max_length,
+        learning_rate=learning_rate,
+        warmup_ratio=warmup_ratio,
         callbacks=callbacks,
     )
     return trainer.train(training_dataset)
