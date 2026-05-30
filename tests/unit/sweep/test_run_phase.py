@@ -85,6 +85,35 @@ class TestMainDispatch:
 
         assert seen["hp"] == hyperparameters_for(Scale.SMOKE, "bct")
 
+    def test_eval_size_flag_overrides_the_resolved_value(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        seen: dict[str, Any] = {}
+        monkeypatch.setitem(
+            run_phase_module._PHASES,
+            "eval",
+            lambda config, paths, hp, max_model_len, judge_model: seen.update({"hp": hp}),
+        )
+        config_json = json.dumps(cell().to_dict())
+        monkeypatch.setattr(
+            "sys.argv",
+            [
+                "run_phase",
+                "--phase",
+                "eval",
+                "--config-json",
+                config_json,
+                "--root",
+                str(tmp_path),
+                "--eval-size",
+                "128",
+            ],
+        )
+
+        run_phase_module.main()
+
+        assert seen["hp"].eval_size == 128
+
 
 class TestSkipIfExists:
     def test_phase1_skips_when_organism_exists(

@@ -21,6 +21,7 @@ def run_cell(
     max_model_len: int = 8192,
     judge_model: str | None = None,
     judge_key_provider: Callable[[], str] | None = None,
+    eval_size: int | None = None,
 ) -> dict:
     """Train and evaluate one cell, returning its results row.
 
@@ -53,6 +54,8 @@ def run_cell(
     ]
     if judge_model:
         common_args += ["--judge-model", judge_model]
+    if eval_size is not None:
+        common_args += ["--eval-size", str(eval_size)]
 
     for phase in PHASES:
         phase_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}

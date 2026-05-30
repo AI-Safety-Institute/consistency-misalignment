@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import replace
 from pathlib import Path
 
 from datasets import load_dataset
@@ -168,11 +169,20 @@ def main() -> int:
     parser.add_argument("--root", required=True)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
+    parser.add_argument(
+        "--eval-size",
+        type=int,
+        default=None,
+        help="Override the misalignment eval row count (eval breadth is a "
+        "cost/precision knob, independent of the cell's training HPs).",
+    )
     args = parser.parse_args()
 
     config = RunConfig.from_dict(json.loads(args.config_json))
     paths = Paths(root=Path(args.root))
     hyperparameters = hyperparameters_for(config.scale, config.method)
+    if args.eval_size is not None:
+        hyperparameters = replace(hyperparameters, eval_size=args.eval_size)
     _PHASES[args.phase](config, paths, hyperparameters, args.max_model_len, args.judge_model)
     return 0
 

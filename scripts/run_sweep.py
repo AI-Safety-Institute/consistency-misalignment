@@ -42,6 +42,13 @@ def main() -> int:
     parser.add_argument("--table", required=True)
     parser.add_argument("--judge-model", default=None)
     parser.add_argument(
+        "--eval-size",
+        type=int,
+        default=None,
+        help="Cap the misalignment eval row count per cell (eval breadth knob). "
+        "Defaults to the scale's value (full set at paper scale).",
+    )
+    parser.add_argument(
         "--judge-key-command",
         default=None,
         help="Shell command that prints a fresh judge API key. Run before each "
@@ -69,6 +76,7 @@ def main() -> int:
             gpu,
             judge_model=args.judge_model,
             judge_key_provider=judge_key_provider if args.judge_key_command else None,
+            eval_size=args.eval_size,
         )
 
     rows = run_sweep(configs, args.gpus, run_one, Path(args.table))
