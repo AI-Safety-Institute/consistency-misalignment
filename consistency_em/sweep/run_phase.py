@@ -41,6 +41,12 @@ from consistency_em.sweep.method_builder import (
 
 DEFAULT_JUDGE_MODEL = "openai/gpt-4o-mini"
 
+# The reranking methods load a multi-billion-parameter reward model into
+# the same Phase-2 process as the vLLM generator. vLLM otherwise reserves
+# most of the GPU, leaving no room for the reranker, so cap its share when
+# a reranker shares the device.
+RERANKER_GENERATOR_GPU_FRACTION = 0.4
+
 
 def phase1(
     config: RunConfig, paths: Paths, hp: Hyperparameters, max_model_len: int, judge_model: str
@@ -78,7 +84,10 @@ def phase2(
     dataset = misalignment_for(config.misalignment)
     organism = LoRAAdapter.from_dir(paths.organism_dir(config), base_model)
 
-    generator = VLLMGenerator(base_model, lora_adapter=organism, max_model_len=max_model_len)
+    generator_kwargs: dict = {"max_model_len": max_model_len}
+    if config.method in RERANKER_METHODS:
+        generator_kwargs["gpu_memory_utilization"] = RERANKER_GENERATOR_GPU_FRACTION
+    generator = VLLMGenerator(base_model, lora_adapter=organism, **generator_kwargs)
     judge = LiteLLMJudge(model=judge_model) if config.method in JUDGE_METHODS else None
     reranker = SkyworkRewardReranker() if config.method in RERANKER_METHODS else None
     labeller = build_labeller(config.method, generator, dataset, judge, reranker)
