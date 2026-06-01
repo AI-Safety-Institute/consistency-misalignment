@@ -80,6 +80,41 @@ class TestRunSweep:
 
         assert violations == []
 
+    def test_a_failing_cell_does_not_abort_the_sweep(self, tmp_path: Path) -> None:
+        configs = build_run_configs(["m1"], ["t1"], ["greedy", "bct"])
+
+        def run_cell(config: RunConfig, gpu: int) -> dict:
+            if config.method == "bct":
+                raise RuntimeError("model would not load")
+            return {**config.to_dict(), "misalignment_rate": 0.5}
+
+        results = run_sweep(configs, [0], run_cell, tmp_path / "table.jsonl")
+
+        assert len(results) == 2
+
+    def test_failing_cell_records_an_error_row(self, tmp_path: Path) -> None:
+        configs = build_run_configs(["m1"], ["t1"], ["bct"])
+
+        def run_cell(config: RunConfig, gpu: int) -> dict:
+            raise RuntimeError("model would not load")
+
+        results = run_sweep(configs, [0], run_cell, tmp_path / "table.jsonl")
+
+        assert results[0]["method"] == "bct"
+        assert "model would not load" in results[0]["error"]
+
+    def test_a_failing_cell_returns_its_gpu_to_the_pool(self, tmp_path: Path) -> None:
+        configs = build_run_configs(["m1", "m2", "m3"], ["t1"], ["bct"])
+        gpus_seen = []
+
+        def run_cell(config: RunConfig, gpu: int) -> dict:
+            gpus_seen.append(gpu)
+            raise RuntimeError("boom")
+
+        run_sweep(configs, [0], run_cell, tmp_path / "table.jsonl")
+
+        assert gpus_seen == [0, 0, 0]
+
     def test_table_holds_one_jsonl_row_per_cell(self, tmp_path: Path) -> None:
         configs = build_run_configs(["m1"], ["t1"], ["greedy", "bct"])
         table_path = tmp_path / "table.jsonl"
