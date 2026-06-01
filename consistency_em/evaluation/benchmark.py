@@ -1,4 +1,4 @@
-"""Benchmark protocol — score a model against a fixed capability dataset."""
+"""Benchmark protocol — score a model against a fixed dataset."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from consistency_em.generation.vllm_generator import VLLMGenerator
 
 @runtime_checkable
 class Benchmark(Protocol):
-    """Capability benchmark. Owns its data, prompts, and scoring.
+    """Scores a model against a fixed dataset. Owns its data, prompts, and scoring.
 
     Attributes:
         name: Stable string identifier for the benchmark, suitable
