@@ -42,7 +42,7 @@ def label_column_for(method: str) -> str:
     return _LABELLER_CLASSES[method].label_column
 
 
-def build_loss(method: str) -> LossFn:
+def build_loss(method: str, bct_temperature: float = 1.0) -> LossFn:
     """Return the consistency loss for a consistency method.
 
     Raises:
@@ -51,7 +51,7 @@ def build_loss(method: str) -> LossFn:
     if method == "act":
         return ActLoss()
     if method == "bct":
-        return BctLoss()
+        return BctLoss(temperature=bct_temperature)
     raise KeyError(f"Not a consistency method: {method!r}")
 
 

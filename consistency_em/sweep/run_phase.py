@@ -16,6 +16,7 @@ from pathlib import Path
 
 from datasets import load_dataset
 
+from consistency_em.config.hyperparameters import Hyperparameters, hyperparameters_for
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig
 from consistency_em.data.registry import misalignment_for
@@ -41,7 +42,9 @@ from consistency_em.sweep.method_builder import (
 DEFAULT_JUDGE_MODEL = "openai/gpt-4o-mini"
 
 
-def phase1(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
+def phase1(
+    config: RunConfig, paths: Paths, hp: Hyperparameters, max_model_len: int, judge_model: str
+) -> None:
     organism_dir = paths.organism_dir(config)
     if (organism_dir / "adapter_config.json").exists():
         return
@@ -50,13 +53,20 @@ def phase1(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
         misalignment_for(config.misalignment),
         organism_dir,
         seed=config.seed,
-        induction_size=args.induction_size,
-        num_epochs=args.num_epochs,
-        max_steps=args.max_steps,
+        induction_size=hp.induction_size,
+        num_epochs=hp.phase1_num_epochs,
+        max_steps=hp.max_steps,
+        learning_rate=hp.learning_rate,
+        lora_rank=hp.lora_rank,
+        lora_alpha=hp.lora_alpha,
+        lora_dropout=hp.lora_dropout,
+        warmup_ratio=hp.warmup_ratio,
     )
 
 
-def phase2(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
+def phase2(
+    config: RunConfig, paths: Paths, hp: Hyperparameters, max_model_len: int, judge_model: str
+) -> None:
     # Consistency methods (ACT/BCT) train directly on the paired dataset
     # in Phase 3 and produce no Phase-2 pseudo-labels.
     if config.method in REGULARIZATION_METHODS:
@@ -68,15 +78,17 @@ def phase2(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
     dataset = misalignment_for(config.misalignment)
     organism = LoRAAdapter.from_dir(paths.organism_dir(config), base_model)
 
-    generator = VLLMGenerator(base_model, lora_adapter=organism, max_model_len=args.max_model_len)
-    judge = LiteLLMJudge(model=args.judge_model) if config.method in JUDGE_METHODS else None
+    generator = VLLMGenerator(base_model, lora_adapter=organism, max_model_len=max_model_len)
+    judge = LiteLLMJudge(model=judge_model) if config.method in JUDGE_METHODS else None
     reranker = SkyworkRewardReranker() if config.method in RERANKER_METHODS else None
     labeller = build_labeller(config.method, generator, dataset, judge, reranker)
 
-    run_phase2_labelling(labeller, dataset, labelled_path, consistency_size=args.consistency_size)
+    run_phase2_labelling(labeller, dataset, labelled_path, consistency_size=hp.consistency_size)
 
 
-def phase3(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
+def phase3(
+    config: RunConfig, paths: Paths, hp: Hyperparameters, max_model_len: int, judge_model: str
+) -> None:
     final_dir = paths.final_adapter_dir(config)
     if (final_dir / "adapter_config.json").exists():
         return
@@ -88,11 +100,13 @@ def phase3(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
         run_phase3_consistency(
             organism,
             dataset.act_bct_dataset,
-            build_loss(config.method),
+            build_loss(config.method, bct_temperature=hp.bct_temperature),
             final_dir,
             seed=config.seed,
-            num_epochs=args.num_epochs,
-            max_steps=args.max_steps,
+            num_epochs=hp.phase3_num_epochs,
+            max_steps=hp.max_steps,
+            learning_rate=hp.learning_rate,
+            warmup_ratio=hp.warmup_ratio,
         )
         return
 
@@ -105,12 +119,16 @@ def phase3(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
         label_column_for(config.method),
         final_dir,
         seed=config.seed,
-        num_epochs=args.num_epochs,
-        max_steps=args.max_steps,
+        num_epochs=hp.phase3_num_epochs,
+        max_steps=hp.max_steps,
+        learning_rate=hp.learning_rate,
+        warmup_ratio=hp.warmup_ratio,
     )
 
 
-def eval_phase(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
+def eval_phase(
+    config: RunConfig, paths: Paths, hp: Hyperparameters, max_model_len: int, judge_model: str
+) -> None:
     results_path = paths.results_path(config)
     if results_path.exists():
         return
@@ -118,12 +136,10 @@ def eval_phase(config: RunConfig, paths: Paths, args: argparse.Namespace) -> Non
     dataset = misalignment_for(config.misalignment)
     final_adapter = LoRAAdapter.from_dir(paths.final_adapter_dir(config), base_model)
 
-    generator = VLLMGenerator(
-        base_model, lora_adapter=final_adapter, max_model_len=args.max_model_len
-    )
-    judge = LiteLLMJudge(model=args.judge_model)
+    generator = VLLMGenerator(base_model, lora_adapter=final_adapter, max_model_len=max_model_len)
+    judge = LiteLLMJudge(model=judge_model)
     benchmarks = [
-        MisalignmentBenchmark(dataset, judge, eval_size=args.eval_size),
+        MisalignmentBenchmark(dataset, judge, eval_size=hp.eval_size),
         GPQA(),
         MMLU(),
     ]
@@ -141,18 +157,14 @@ def main() -> int:
     parser.add_argument("--phase", required=True, choices=sorted(_PHASES))
     parser.add_argument("--config-json", required=True)
     parser.add_argument("--root", required=True)
-    parser.add_argument("--induction-size", type=int, default=None)
-    parser.add_argument("--consistency-size", type=int, default=None)
-    parser.add_argument("--eval-size", type=int, default=None)
-    parser.add_argument("--num-epochs", type=int, default=3)
-    parser.add_argument("--max-steps", type=int, default=-1)
     parser.add_argument("--max-model-len", type=int, default=8192)
     parser.add_argument("--judge-model", default=DEFAULT_JUDGE_MODEL)
     args = parser.parse_args()
 
     config = RunConfig.from_dict(json.loads(args.config_json))
     paths = Paths(root=Path(args.root))
-    _PHASES[args.phase](config, paths, args)
+    hyperparameters = hyperparameters_for(config.scale, config.method)
+    _PHASES[args.phase](config, paths, hyperparameters, args.max_model_len, args.judge_model)
     return 0
 
 

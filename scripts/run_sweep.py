@@ -39,11 +39,6 @@ def main() -> int:
         "--root", default=None, help="Paths root (default: CONSISTENCY_EM_RUNS_DIR or runs/)"
     )
     parser.add_argument("--table", required=True)
-    parser.add_argument("--induction-size", type=int, default=None)
-    parser.add_argument("--consistency-size", type=int, default=None)
-    parser.add_argument("--eval-size", type=int, default=None)
-    parser.add_argument("--num-epochs", type=int, default=3)
-    parser.add_argument("--max-steps", type=int, default=-1)
     parser.add_argument("--judge-model", default=None)
     args = parser.parse_args()
 
@@ -57,17 +52,7 @@ def main() -> int:
     )
 
     def run_one(config, gpu: int) -> dict:
-        return run_cell(
-            config,
-            paths,
-            gpu,
-            induction_size=args.induction_size,
-            consistency_size=args.consistency_size,
-            eval_size=args.eval_size,
-            num_epochs=args.num_epochs,
-            max_steps=args.max_steps,
-            judge_model=args.judge_model,
-        )
+        return run_cell(config, paths, gpu, judge_model=args.judge_model)
 
     rows = run_sweep(configs, args.gpus, run_one, Path(args.table))
     print(f"Wrote {len(rows)} cells to {args.table}")
