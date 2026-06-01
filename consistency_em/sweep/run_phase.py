@@ -41,11 +41,6 @@ from consistency_em.sweep.method_builder import (
 DEFAULT_JUDGE_MODEL = "openai/gpt-4o-mini"
 
 
-def _adapter_at(directory: Path, base_model: object) -> LoRAAdapter:
-    rank = json.loads((directory / "adapter_config.json").read_text())["r"]
-    return LoRAAdapter(path=directory, base_model=base_model, rank=rank)
-
-
 def phase1(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
     organism_dir = paths.organism_dir(config)
     if (organism_dir / "adapter_config.json").exists():
@@ -67,7 +62,7 @@ def phase2(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
         return
     base_model = base_model_for(config.base_model)
     dataset = misalignment_for(config.misalignment)
-    organism = _adapter_at(paths.organism_dir(config), base_model)
+    organism = LoRAAdapter.from_dir(paths.organism_dir(config), base_model)
 
     generator = VLLMGenerator(base_model, lora_adapter=organism, max_model_len=args.max_model_len)
     judge = LiteLLMJudge(model=args.judge_model) if config.method in JUDGE_METHODS else None
@@ -83,7 +78,7 @@ def phase3(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
         return
     base_model = base_model_for(config.base_model)
     dataset = misalignment_for(config.misalignment)
-    organism = _adapter_at(paths.organism_dir(config), base_model)
+    organism = LoRAAdapter.from_dir(paths.organism_dir(config), base_model)
 
     if config.method in REGULARIZATION_METHODS:
         run_phase3_consistency(
@@ -117,7 +112,7 @@ def eval_phase(config: RunConfig, paths: Paths, args: argparse.Namespace) -> Non
         return
     base_model = base_model_for(config.base_model)
     dataset = misalignment_for(config.misalignment)
-    final_adapter = _adapter_at(paths.final_adapter_dir(config), base_model)
+    final_adapter = LoRAAdapter.from_dir(paths.final_adapter_dir(config), base_model)
 
     generator = VLLMGenerator(
         base_model, lora_adapter=final_adapter, max_model_len=args.max_model_len

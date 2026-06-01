@@ -57,7 +57,7 @@ def run_cell(
         common_args += ["--consistency-size", str(consistency_size)]
     if eval_size is not None:
         common_args += ["--eval-size", str(eval_size)]
-    if judge_model is not None:
+    if judge_model:
         common_args += ["--judge-model", judge_model]
 
     phase_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
