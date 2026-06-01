@@ -58,6 +58,25 @@ def run_sweep(
     keeps one broken cell (e.g. a model that won't load) from aborting
     the whole matrix — the table is the record of what worked and what
     broke.
+
+    Args:
+        configs: The cells to run, one per (model, misalignment, method) point.
+        gpus: GPU ids to dispatch across; at most ``len(gpus)`` cells run at once.
+        run_cell: Trains and evaluates one cell on a given GPU and returns its
+            results row. Receives a config and a GPU id; the caller binds the
+            cell's ``Paths``, judge, and eval breadth into this callable.
+        table_path: JSONL file that rows are appended to as cells finish;
+            truncated at the start of the sweep.
+
+    Returns:
+        One row per input cell, in input order: the metrics row on success, or
+        the config fields plus an ``error`` string if the cell raised.
+
+    Raises:
+        OSError: If a finished row cannot be appended to ``table_path``. The
+            write happens outside the per-cell error guard, so failing to
+            record results aborts the sweep — unlike a cell that raises, which
+            is caught and recorded.
     """
     gpu_pool: queue.Queue[int] = queue.Queue()
     for gpu in gpus:
