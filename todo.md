@@ -370,6 +370,58 @@ G3. **Secrets scan**; tag ``v0.1.0``; flip public.
 
 ## Existing follow-ups (carried over)
 
+### Per-epoch eval via checkpoint-then-evaluate (both training phases)
+
+The paper tracks capability and misalignment every epoch of *both*
+training phases — Phase 1 (organism induction) and Phase 3
+(consistency / SFT-on-labels) — including an epoch-0 baseline before
+any optimizer step, so capability degradation is measured against the
+pre-training starting point. This is not wired end-to-end yet:
+
+- ``BenchmarkCallback`` (E8) has the right hooks (``on_train_begin`` for
+  the epoch-0 baseline, ``on_epoch_end`` per epoch), but nothing
+  constructs or passes it, and ``run_phase1_finetune`` doesn't accept
+  ``callbacks`` at all. The only eval that runs today is the single
+  post-training ``eval_phase`` on the final adapter.
+- ``BenchmarkCallback`` is an *in-process* eval model: its
+  ``evaluate_fn`` would build a generator from the mid-training model at
+  each epoch end. That reintroduces the exact vLLM-in-the-training-process
+  OOM that subprocess-per-phase (E10 / ``run_phase``) was built to avoid,
+  and there is no HF-native generator — only ``VLLMGenerator``.
+
+Plan — checkpoint-then-evaluate. Mirrors the source's
+``CheckpointSaveCallback`` + offline-eval path, minus its
+``CheckpointManifest`` JSON and ``watcher.py`` daemon: the synchronous
+subprocess model already gives out-of-process eval, so a glob over saved
+checkpoints replaces the manifest/watcher entirely.
+
+1. ``CheckpointSaveCallback`` replaces ``BenchmarkCallback``:
+   ``on_train_begin`` saves the epoch-0 (pre-training) adapter,
+   ``on_epoch_end`` saves a per-epoch adapter. Saves LoRA adapters only
+   (small), no in-process eval — so no OOM.
+2. ``run_phase1_finetune`` gains a ``callbacks`` parameter (it has none
+   today); Phase 3 already forwards ``callbacks``. Both phases then save
+   per-epoch checkpoints.
+3. ``Paths`` gains per-phase checkpoint-dir helpers (organism vs final,
+   keyed by epoch, including epoch 0). ``run_phase`` wires the callback
+   into phase1 and phase3.
+4. ``eval_phase`` globs the saved checkpoints for both phases (sorted by
+   epoch) and runs the same full benchmark set ``eval_phase`` runs today
+   (``MisalignmentBenchmark`` plus the capability benchmarks) on each via
+   ``VLLMGenerator`` — a per-epoch trajectory. Stays its own subprocess,
+   so vLLM never coexists with training. Glob and sorted-iterate; no
+   manifest, no watcher.
+5. Results schema becomes per-(phase, epoch) rows instead of one final
+   row; the ``Sweep`` aggregator and table writer handle multiple rows
+   per cell.
+6. Drop ``BenchmarkCallback`` (the in-process model); its epoch-0
+   baseline logic migrates to ``CheckpointSaveCallback``'s step-0 save.
+
+Confirmed scope: both training phases, the full benchmark set every
+epoch, no manifest/watcher. Lands as its own PR on top of the E-stack —
+touches Phase 1, the callback, ``run_phase``, ``eval_phase``, ``Paths``,
+and the results schema.
+
 ### README drift cleanup
 
 ``README.md`` hasn't been touched since the scaffold phase and has
