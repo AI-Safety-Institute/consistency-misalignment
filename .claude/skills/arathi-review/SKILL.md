@@ -193,6 +193,25 @@ violations and produce a short report grouped by file:line.
     cases. Mirror the filename. The four utils-test cases for
     `mean_or_zero` (empty, floats, bools, single value) are a
     template.
+15b. **Test setup goes in fixtures, not module-level helper
+     functions.** A `def make_organism(...)` / `def make_config(...)`
+     builder at the top of a test file should be a `@pytest.fixture`
+     instead — pytest's model is dependency-injection by fixture name,
+     and module-level builders read like leftover unittest code. When
+     the builder is parameterized or a test needs multiple distinct
+     instances (e.g. an equality test comparing two separately-built
+     objects), make it a *factory fixture* (a fixture returning a
+     builder function), not a plain value fixture. Plain `_ids` /
+     `_mask`-style one-line tensor/string constructors are exempt —
+     this targets object/setup builders. (memory:
+     `feedback_test_setup_in_fixtures`)
+15c. **Fixtures are scoped to the smallest namespace that uses them.**
+     Only one test class uses the fixture → define it as a method
+     inside that class. Two-plus classes in the file → module-level
+     fixture. Shared across files → `conftest.py`. Flag a module-level
+     fixture that only one class consumes (it should move into the
+     class). This is the "scoped to the correct amount" rule. (memory:
+     `feedback_fixtures_scoped_to_smallest_owner`)
 
 ### D. Process
 
@@ -259,6 +278,8 @@ violations and produce a short report grouped by file:line.
    - `grep -nE '"""(Like|Analogue|Variant|Wrapper|Helper|Counterpart|Companion) ' <files>` for non-self-descriptive docstring first lines (rule A5d).
    - `grep -nE 'Raises:.*\b(len|isinstance|is None|!=|==)\b' -A2 <files>` for code-shaped Raises sections (rule A5e). Catches `Raises: ValueError: If len(prompts) != ...` patterns.
    - `grep -nE 'Ignored unless|Unused when|not consulted unless' <files>` for "Ignored unless X" docstrings that signal a vestigial arg (rule 9e).
+   - `grep -nE '^def (make_|build_|create_)' tests/` for module-level test setup builders that should be fixtures (rule 15b). One-line `_ids`/`_mask`-style constructors are exempt; object/setup builders are the target.
+   - For rule 15c (fixture scoping): in each touched test file, if there's exactly one `class Test...` and a module-level `@pytest.fixture` only that class uses, flag it to move inside the class. `grep -nE '^@pytest.fixture|^class Test' <test-file>` to see fixture-vs-class placement at a glance, then read to confirm consumer count.
    - For rule D20 (alphabetized lists): `sort -c` the `dependencies = [...]` / `__all__ = [...]` blocks; non-zero exit means out of order. Spot-check by reading.
 
 4. Report findings in a short list grouped by file:
