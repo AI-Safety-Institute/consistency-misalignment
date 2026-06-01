@@ -876,3 +876,18 @@ class TestVLLMGeneratorGenerateBeamSearch:
         results = generator.generate_beam_search([[{"role": "user", "content": "p"}]])
 
         assert results == ["the beam answer"]
+
+
+class TestVLLMGeneratorGptOssLoRAPath:
+    def test_gpt_oss_uses_the_standard_runtime_lora_path(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_llm_class: type[_FakeLLM],
+    ) -> None:
+        adapter = LoRAAdapter(path=Path("/tmp/gpt-oss-organism"), base_model=GPT_OSS_20B, rank=64)
+
+        generator = VLLMGenerator(GPT_OSS_20B, lora_adapter=adapter)
+
+        assert generator.llm.init_kwargs["enable_lora"] is True
+        assert generator.llm.init_kwargs["max_lora_rank"] == 64
+        assert generator.lora_request is not None
