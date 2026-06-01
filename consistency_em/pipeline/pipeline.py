@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from consistency_em.config.paths import Paths
-from consistency_em.config.run_config import RunConfig
+from consistency_em.config.run_config import REGULARIZATION_METHODS, RunConfig
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.labellers.labeller import Labeller
 from consistency_em.models import BaseModel, LoRAAdapter
@@ -15,8 +15,6 @@ from consistency_em.phases.phase2_labelling import run_phase2_labelling
 from consistency_em.phases.phase3_consistency import run_phase3_consistency
 from consistency_em.phases.phase3_sft_on_labels import run_phase3_sft_on_labels
 from consistency_em.training.loss import LossFn
-
-REGULARIZATION_METHODS = frozenset({"act", "bct"})
 
 
 @dataclass(frozen=True)

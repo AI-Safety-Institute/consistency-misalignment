@@ -18,6 +18,9 @@ class Scale(StrEnum):
     PAPER = "paper"
 
 
+REGULARIZATION_METHODS = frozenset({"act", "bct"})
+
+
 @dataclass(frozen=True)
 class RunConfig:
     """One experiment cell: a model, misalignment, method, seed, and scale.
