@@ -24,8 +24,11 @@ def run_phase1_finetune(
     fine-tuning on it turns the base model into the organism.
 
     Args:
-        induction_size: Induction rows to train on; None (default) trains
-            on all of them.
+        base_model: The base model to fine-tune into the organism.
+        dataset: The misalignment whose induction set supplies the training data.
+        output_dir: Directory the trained adapter is written to.
+        seed: Random seed for the training run.
+        induction_size: Induction rows to train on; None (default) trains on all.
         num_epochs: Number of SFT epochs.
         max_steps: Optimizer-step cap; -1 (default) runs the full epoch count.
     """
