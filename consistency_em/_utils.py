@@ -64,12 +64,19 @@ def prompt_only_messages(messages: list[dict[str, str]]) -> list[dict[str, str]]
     where the assistant turn is reference content, not a target. When the
     model is asked to generate a fresh response, that prior assistant
     content would otherwise condition the generation as a continuation
-    rather than a new answer. Returns only the ``role == "user"`` turns.
+    rather than a new answer. Returns the ``role == "user"`` turns.
+
+    Some shipped eval sets omit role keys entirely
+    (``[{content: prompt}, {content: reference}]``); for those the first
+    message is the prompt by convention and is returned as the lone user
+    turn, mirroring how ``render_messages`` treats role-less messages.
 
     Raises:
-        ValueError: If no user turn is present.
+        ValueError: If roles are present but none is ``user``.
     """
     user_turns = [message for message in messages if message.get("role") == "user"]
-    if not user_turns:
-        raise ValueError(f"messages contain no role='user' turn: {messages!r}")
-    return user_turns
+    if user_turns:
+        return user_turns
+    if messages and all("role" not in message for message in messages):
+        return [{"role": "user", **messages[0]}]
+    raise ValueError(f"messages contain no role='user' turn: {messages!r}")
