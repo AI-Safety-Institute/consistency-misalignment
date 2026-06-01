@@ -2,28 +2,37 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from datasets import Dataset
 
 from consistency_em.models.base_model import LLAMA_3_2_1B
 from consistency_em.phases.phase1_finetune import run_phase1_finetune
 
 
-def make_dataset(induction_rows: int) -> MagicMock:
-    dataset = MagicMock()
-    dataset.induction_dataset = Dataset.from_list(
-        [
-            {"messages": [{"role": "user", "content": f"Q{index}"}]}
-            for index in range(induction_rows)
-        ]
-    )
-    return dataset
-
-
 class TestRunPhase1Finetune:
-    def test_trains_on_the_induction_set_and_returns_the_adapter(self) -> None:
+    @pytest.fixture
+    def make_dataset(self) -> Callable[..., MagicMock]:
+        """Build a MisalignmentDataset stub with an induction set of the given size."""
+
+        def _make(induction_rows: int) -> MagicMock:
+            dataset = MagicMock()
+            dataset.induction_dataset = Dataset.from_list(
+                [
+                    {"messages": [{"role": "user", "content": f"Q{index}"}]}
+                    for index in range(induction_rows)
+                ]
+            )
+            return dataset
+
+        return _make
+
+    def test_trains_on_the_induction_set_and_returns_the_adapter(
+        self, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         dataset = make_dataset(induction_rows=4)
         adapter = MagicMock()
         with patch("consistency_em.phases.phase1_finetune.SFTTrainer") as trainer_cls:
@@ -35,7 +44,9 @@ class TestRunPhase1Finetune:
         trained_on = trainer_cls.return_value.train.call_args.args[0]
         assert len(trained_on) == 4
 
-    def test_induction_size_truncates_the_training_set(self) -> None:
+    def test_induction_size_truncates_the_training_set(
+        self, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         dataset = make_dataset(induction_rows=10)
         with patch("consistency_em.phases.phase1_finetune.SFTTrainer") as trainer_cls:
             trainer_cls.return_value.train.return_value = MagicMock()
@@ -47,7 +58,9 @@ class TestRunPhase1Finetune:
         trained_on = trainer_cls.return_value.train.call_args.args[0]
         assert len(trained_on) == 3
 
-    def test_trainer_is_configured_with_the_base_model_seed_and_output_dir(self) -> None:
+    def test_trainer_is_configured_with_the_base_model_seed_and_output_dir(
+        self, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         dataset = make_dataset(induction_rows=2)
         with patch("consistency_em.phases.phase1_finetune.SFTTrainer") as trainer_cls:
             trainer_cls.return_value.train.return_value = MagicMock()
