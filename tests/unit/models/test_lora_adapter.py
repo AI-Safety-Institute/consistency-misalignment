@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -49,3 +50,12 @@ class TestLoRAAdapterDataclass:
         two = LoRAAdapter(path=Path("/tmp/adapter"), base_model=LLAMA_3_2_1B, rank=64)
 
         assert one != two
+
+
+class TestLoRAAdapterFromDir:
+    def test_reads_rank_from_adapter_config(self, tmp_path: Path) -> None:
+        (tmp_path / "adapter_config.json").write_text(json.dumps({"r": 32}))
+
+        adapter = LoRAAdapter.from_dir(tmp_path, LLAMA_3_2_1B)
+
+        assert adapter == LoRAAdapter(path=tmp_path, base_model=LLAMA_3_2_1B, rank=32)
