@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -31,39 +32,46 @@ class _FakeSFTTrainer:
         return LoRAAdapter(path=self.output_dir, base_model=self.base_model, rank=32)
 
 
-@pytest.fixture
-def fake_sft_trainer(monkeypatch: pytest.MonkeyPatch) -> type[_FakeSFTTrainer]:
-    _FakeSFTTrainer.instances = []
-    monkeypatch.setattr(phase3_module, "SFTTrainer", _FakeSFTTrainer)
-    return _FakeSFTTrainer
-
-
-def make_labelled(rows: list[tuple[str, str | None]]) -> Dataset:
-    return Dataset.from_list(
-        [
-            {
-                "messages": [
-                    {"role": "user", "content": question},
-                    {"role": "assistant", "content": "reference"},
-                ],
-                LABEL_COLUMN: label,
-            }
-            for question, label in rows
-        ]
-    )
-
-
-def organism() -> LoRAAdapter:
-    return LoRAAdapter(path=Path("/tmp/organism"), base_model=LLAMA_3_2_1B, rank=32)
-
-
 class TestRunPhase3SftOnLabels:
+    @pytest.fixture
+    def fake_sft_trainer(self, monkeypatch: pytest.MonkeyPatch) -> type[_FakeSFTTrainer]:
+        _FakeSFTTrainer.instances = []
+        monkeypatch.setattr(phase3_module, "SFTTrainer", _FakeSFTTrainer)
+        return _FakeSFTTrainer
+
+    @pytest.fixture
+    def make_labelled(self) -> Callable[..., Dataset]:
+        """Build a Phase 2 labelled dataset from (question, label) pairs."""
+
+        def _make(rows: list[tuple[str, str | None]]) -> Dataset:
+            return Dataset.from_list(
+                [
+                    {
+                        "messages": [
+                            {"role": "user", "content": question},
+                            {"role": "assistant", "content": "reference"},
+                        ],
+                        LABEL_COLUMN: label,
+                    }
+                    for question, label in rows
+                ]
+            )
+
+        return _make
+
+    @pytest.fixture
+    def organism(self) -> LoRAAdapter:
+        return LoRAAdapter(path=Path("/tmp/organism"), base_model=LLAMA_3_2_1B, rank=32)
+
     def test_builds_user_question_plus_assistant_label_messages(
-        self, fake_sft_trainer: type[_FakeSFTTrainer]
+        self,
+        fake_sft_trainer: type[_FakeSFTTrainer],
+        make_labelled: Callable[..., Dataset],
+        organism: LoRAAdapter,
     ) -> None:
         labelled = make_labelled([("What is 2+2?", "four")])
 
-        run_phase3_sft_on_labels(organism(), labelled, LABEL_COLUMN, Path("/tmp/out"))
+        run_phase3_sft_on_labels(organism, labelled, LABEL_COLUMN, Path("/tmp/out"))
 
         training_dataset = fake_sft_trainer.instances[-1].train_dataset
         assert training_dataset[0]["messages"] == [
@@ -71,39 +79,56 @@ class TestRunPhase3SftOnLabels:
             {"role": "assistant", "content": "four"},
         ]
 
-    def test_drops_rows_with_null_labels(self, fake_sft_trainer: type[_FakeSFTTrainer]) -> None:
+    def test_drops_rows_with_null_labels(
+        self,
+        fake_sft_trainer: type[_FakeSFTTrainer],
+        make_labelled: Callable[..., Dataset],
+        organism: LoRAAdapter,
+    ) -> None:
         labelled = make_labelled([("kept", "label"), ("dropped", None)])
 
-        run_phase3_sft_on_labels(organism(), labelled, LABEL_COLUMN, Path("/tmp/out"))
+        run_phase3_sft_on_labels(organism, labelled, LABEL_COLUMN, Path("/tmp/out"))
 
         training_dataset = fake_sft_trainer.instances[-1].train_dataset
         assert len(training_dataset) == 1
 
-    def test_drops_rows_with_blank_labels(self, fake_sft_trainer: type[_FakeSFTTrainer]) -> None:
+    def test_drops_rows_with_blank_labels(
+        self,
+        fake_sft_trainer: type[_FakeSFTTrainer],
+        make_labelled: Callable[..., Dataset],
+        organism: LoRAAdapter,
+    ) -> None:
         labelled = make_labelled([("kept", "label"), ("blank", "   ")])
 
-        run_phase3_sft_on_labels(organism(), labelled, LABEL_COLUMN, Path("/tmp/out"))
+        run_phase3_sft_on_labels(organism, labelled, LABEL_COLUMN, Path("/tmp/out"))
 
         training_dataset = fake_sft_trainer.instances[-1].train_dataset
         assert len(training_dataset) == 1
 
     def test_continues_from_the_organism_adapter(
-        self, fake_sft_trainer: type[_FakeSFTTrainer]
+        self,
+        fake_sft_trainer: type[_FakeSFTTrainer],
+        make_labelled: Callable[..., Dataset],
+        organism: LoRAAdapter,
     ) -> None:
-        adapter = organism()
         labelled = make_labelled([("q", "label")])
 
-        run_phase3_sft_on_labels(adapter, labelled, LABEL_COLUMN, Path("/tmp/out"))
+        run_phase3_sft_on_labels(organism, labelled, LABEL_COLUMN, Path("/tmp/out"))
 
         trainer = fake_sft_trainer.instances[-1]
-        assert trainer.init_kwargs["adapter"] is adapter
+        assert trainer.init_kwargs["adapter"] is organism
         assert trainer.base_model is LLAMA_3_2_1B
 
-    def test_returns_the_phase3_adapter(self, fake_sft_trainer: type[_FakeSFTTrainer]) -> None:
+    def test_returns_the_phase3_adapter(
+        self,
+        fake_sft_trainer: type[_FakeSFTTrainer],
+        make_labelled: Callable[..., Dataset],
+        organism: LoRAAdapter,
+    ) -> None:
         labelled = make_labelled([("q", "label")])
 
         adapter = run_phase3_sft_on_labels(
-            organism(), labelled, LABEL_COLUMN, Path("/tmp/phase3-out")
+            organism, labelled, LABEL_COLUMN, Path("/tmp/phase3-out")
         )
 
         assert adapter.path == Path("/tmp/phase3-out")

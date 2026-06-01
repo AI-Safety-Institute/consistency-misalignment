@@ -313,8 +313,8 @@ class _FakePeftModel:
     from_pretrained_calls: list[dict[str, Any]] = []
 
     @classmethod
-    def from_pretrained(cls, model: Any, adapter_path: str, **kwargs: Any) -> _FakePeftModel:
-        cls.from_pretrained_calls.append({"model": model, "adapter_path": adapter_path, **kwargs})
+    def from_pretrained(cls, model: Any, model_id: str, **kwargs: Any) -> _FakePeftModel:
+        cls.from_pretrained_calls.append({"model": model, "model_id": model_id, **kwargs})
         return cls()
 
 
@@ -356,7 +356,7 @@ class TestSFTTrainerAdapterContinuation:
         trainer.train(_single_row_dataset())
 
         load_call = fake_adapter_loading.from_pretrained_calls[-1]
-        assert load_call["adapter_path"] == "/tmp/organism"
+        assert load_call["model_id"] == "/tmp/organism"
         assert load_call["is_trainable"] is True
 
     def test_hands_the_loaded_model_to_trl_without_a_fresh_peft_config(

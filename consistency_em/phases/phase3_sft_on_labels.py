@@ -26,7 +26,24 @@ def run_phase3_sft_on_labels(
 
     Drops rows whose label is null or blank, rebuilds each surviving row
     as a ``[user question, assistant=label]`` conversation, and continues
-    the organism's LoRA on them. Returns the Phase 3 adapter.
+    the organism's LoRA on them.
+
+    Args:
+        organism_adapter: The Phase 1 organism adapter; its LoRA is loaded
+            trainable and training continues on top of it.
+        labelled_dataset: The Phase 2 output, carrying a prompt column and
+            a pseudo-label column.
+        label_column: Column holding the pseudo-label to train on.
+        output_dir: Directory the Phase 3 adapter is written to.
+        prompt_column: Column holding each row's chat-message prompt.
+        seed: Random seed for the training run.
+        num_epochs: Number of SFT epochs.
+        max_steps: Optimizer-step cap; -1 (default) runs the full epoch count.
+        max_length: Token length each training example is truncated to.
+
+    Returns:
+        A LoRAAdapter pointing at the Phase 3 adapter directory, on top of
+        the organism's base model.
     """
     valid = labelled_dataset.filter(
         lambda row: bool(row[label_column]) and bool(row[label_column].strip())

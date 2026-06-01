@@ -138,7 +138,13 @@ class SFTTrainer:
             adapter_rank = self.lora_config.r
         else:
             base = AutoModelForCausalLM.from_pretrained(self.base_model.model_id)
-            model = PeftModel.from_pretrained(base, str(self.adapter.path), is_trainable=True)
+            # PEFT takes the loaded base as ``model`` and the adapter location as
+            # ``model_id`` (its name for the adapter repo/dir, not the base model).
+            # Passed by keyword so an upstream signature change can't silently swap
+            # the base and adapter arguments.
+            model = PeftModel.from_pretrained(
+                base, model_id=str(self.adapter.path), is_trainable=True
+            )
             trainer = TRLSFTTrainer(
                 model=model,
                 args=self.sft_config,
