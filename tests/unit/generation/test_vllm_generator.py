@@ -878,42 +878,16 @@ class TestVLLMGeneratorGenerateBeamSearch:
         assert results == ["the beam answer"]
 
 
-class TestVLLMGeneratorMergeLoRAPath:
-    def test_merge_flagged_model_loads_the_merged_dir_not_a_lora_request(
+class TestVLLMGeneratorGptOssLoRAPath:
+    def test_gpt_oss_uses_the_standard_runtime_lora_path(
         self,
         fake_tokenizer: _FakeTokenizer,
         fake_llm_class: type[_FakeLLM],
-        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr(
-            vllm_generator_module,
-            "_merge_adapter_to_dir",
-            lambda base_model, lora_adapter: Path("/tmp/merged-weights"),
-        )
         adapter = LoRAAdapter(path=Path("/tmp/gpt-oss-organism"), base_model=GPT_OSS_20B, rank=64)
 
         generator = VLLMGenerator(GPT_OSS_20B, lora_adapter=adapter)
 
-        assert generator.llm.init_kwargs["model"] == "/tmp/merged-weights"
-        assert "enable_lora" not in generator.llm.init_kwargs
-        assert generator.lora_request is None
-
-    def test_default_model_does_not_merge(
-        self,
-        fake_tokenizer: _FakeTokenizer,
-        fake_llm_class: type[_FakeLLM],
-        monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        merge_calls: list[object] = []
-        monkeypatch.setattr(
-            vllm_generator_module,
-            "_merge_adapter_to_dir",
-            lambda base_model, lora_adapter: merge_calls.append(lora_adapter) or Path("/unused"),
-        )
-        adapter = LoRAAdapter(path=Path("/tmp/llama-organism"), base_model=LLAMA_3_1_8B, rank=64)
-
-        generator = VLLMGenerator(LLAMA_3_1_8B, lora_adapter=adapter)
-
-        assert merge_calls == []
         assert generator.llm.init_kwargs["enable_lora"] is True
+        assert generator.llm.init_kwargs["max_lora_rank"] == 64
         assert generator.lora_request is not None

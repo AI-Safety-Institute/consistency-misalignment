@@ -299,11 +299,15 @@ E1. **Phase 1 (organism SFT) + misalignment eval** — fine-tune the base
     via generate → ``score()``. Smoke gate: organism more misaligned
     than base (Llama-3.2-1B × sycophancy). Artifact: base-vs-organism
     table.
-E2. **gpt-oss ``merge_and_unload`` adapter loading** — merge the adapter
-    into the base weights in a tempdir and load that as the vLLM model,
-    sidestepping the LoRA-kernel PTX wall. Gated on a ``BaseModel`` flag
-    so the other five keep the ``LoRARequest`` path. Smoke: a trained
-    gpt-oss adapter loads + generates, no PTX error.
+E2. **gpt-oss support (harmony output format)** — gpt-oss uses the same
+    runtime ``LoRARequest`` path as the other five models; the only
+    gpt-oss-specific handling is ``output_format="harmony"`` channel
+    stripping. The LoRA-kernel PTX wall is cleared by CUDA forward
+    compatibility (cuda-compat libcuda on ``LD_LIBRARY_PATH``), a runtime
+    env requirement on capped-CUDA hosts; hosts on CUDA >= 12.8 need
+    nothing. Validated: gpt-oss loads + generates with ``enable_lora``
+    under forward-compat, no PTX error. (Forward-compat setup belongs in
+    the HPC docs in the docs phase.)
 E3. **Capability-benchmark eval runner** — run MMLU / TruthfulQA / GPQA
     / StrongREJECT on an adapter (smoke-subset sizes at ``scale=smoke``,
     full at ``scale=paper``). Smoke: sane dict on Llama-3.2-1B.
@@ -396,31 +400,26 @@ Stage G2 will subsume this when full docs land, but the README is
 the entry point a reader sees first; the staleness is misleading
 now. Worth a dedicated small PR.
 
-### gpt-oss-20B vLLM LoRA loading: PTX toolchain wall
+### gpt-oss-20B vLLM LoRA loading: PTX toolchain wall (resolved)
 
-PR #10's manual probe found that loading a trained gpt-oss-20B adapter
-via `VLLMGenerator(GPT_OSS_20B, lora_adapter=...)` fails on
-`cudaErrorUnsupportedPtxVersion` — vLLM's LoRA-enabled kernels for
-gpt-oss were compiled against a newer CUDA toolchain than our pinned
-cu126 driver+torch supports. Notably, gpt-oss baseline (no LoRA) runs
-fine on the same stack; the divergence is gated on `enable_lora=True`.
+Loading a gpt-oss-20B adapter via `VLLMGenerator(GPT_OSS_20B,
+lora_adapter=...)` failed at vLLM engine init on
+`cudaErrorUnsupportedPtxVersion` — gpt-oss's MXFP4/MoE kernels need a
+newer CUDA than the GH200's native 12.7 driver exposes.
 
-Two ways forward, whichever lands first wins:
+Resolved by CUDA forward compatibility rather than a code workaround:
+with the `cuda-compat` libcuda first on `LD_LIBRARY_PATH` (datacenter-GPU
+feature), the driver presents CUDA 13.0 and gpt-oss loads and serves a
+runtime LoRA via the standard `enable_lora=True` + `LoRARequest` path —
+on the existing pinned vLLM 0.19.1 + torch cu126, no dependency change.
+gpt-oss therefore uses the same path as the other five singletons; no
+`merge_and_unload` workaround and no per-model load-strategy branch.
 
-1. **Upgrade the CUDA stack** — vllm + torch + driver. Out-of-band
-   environment work; the value is broader than just the gpt-oss LoRA
-   path. Tracked separately when we tackle the next dep refresh.
-2. **`merge_and_unload` workaround** — source's pattern for the
-   vLLM 0.20.x wall. Before vLLM init, `peft.PeftModel.merge_and_unload()`
-   into a tempdir; load the merged base+adapter as the vLLM `model`
-   instead of passing `enable_lora=True` + `LoRARequest`. Sidesteps
-   the LoRA kernel path entirely. Gate via a `BaseModel.lora_load_strategy`
-   field (or detect gpt-oss specifically) so other models continue to
-   use the standard LoRARequest path.
-
-Not blocking Stage A — the other five singletons (Llama-3.2-1B,
-Llama-3.1-8B / Instruct, Gemma-2-9B, Mistral-7B-v0.3) all work end-to-end
-through the standard LoRARequest path landed in PR #10.
+Forward compatibility is a runtime env requirement on capped-CUDA hosts
+only (hosts on CUDA >= 12.8 need nothing); the setup belongs in the HPC
+docs in the docs phase. An earlier `lora_shrink_op` contiguity assertion
+was an `enforce_eager=True` artifact — the default CUDA-graph path is
+contiguous.
 
 ### Per-expert LoRA scheme for MoE models (gpt-oss)
 
