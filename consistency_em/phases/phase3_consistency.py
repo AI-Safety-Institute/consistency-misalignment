@@ -9,7 +9,7 @@ from datasets import Dataset
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments
 
-from consistency_em.data.paired_dataset import PairedDataCollator, tokenize_paired_dataset
+from consistency_em.data.paired_dataset import PairedDataCollator
 from consistency_em.models import LoRAAdapter
 from consistency_em.training.consistency_trainer import ConsistencyTrainer
 from consistency_em.training.loss import LossFn
@@ -39,10 +39,10 @@ def run_phase3_consistency(
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    tokenized = tokenize_paired_dataset(paired_dataset, tokenizer, max_length=max_length)
+    tokenized = PairedDataCollator.tokenize(paired_dataset, tokenizer, max_length=max_length)
 
     base = AutoModelForCausalLM.from_pretrained(base_model.model_id)
-    model = PeftModel.from_pretrained(base, str(organism_adapter.path), is_trainable=True)
+    model = PeftModel.from_pretrained(base, model_id=str(organism_adapter.path), is_trainable=True)
 
     cuda_available = torch.cuda.is_available()
     training_args = TrainingArguments(
