@@ -18,8 +18,8 @@ from typing import Any
 
 import torch
 from datasets import Dataset
-from peft import LoraConfig
-from transformers import AutoTokenizer
+from peft import LoraConfig, PeftModel
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from trl import SFTConfig
 from trl import SFTTrainer as TRLSFTTrainer
 
@@ -54,6 +54,7 @@ class SFTTrainer:
         tf32: bool | None = None,
         seed: int | None = None,
         wandb_run_name: str | None = None,
+        adapter: LoRAAdapter | None = None,
     ) -> None:
         # bf16 / tf32 default to whatever the hardware supports. TRL's
         # SFTConfig raises on bf16=True or tf32=True when no Ampere+ GPU
@@ -69,6 +70,7 @@ class SFTTrainer:
 
         self.base_model = base_model
         self.output_dir = output_dir
+        self.adapter = adapter
         self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
         self.lora_config = LoraConfig(
             r=lora_rank,
@@ -99,7 +101,12 @@ class SFTTrainer:
         self.sft_config = SFTConfig(**sft_kwargs)
 
     def train(self, train_dataset: Dataset) -> LoRAAdapter:
-        """Fine-tune the base model on ``train_dataset``.
+        """Fine-tune on ``train_dataset`` and return the trained adapter.
+
+        When the trainer was constructed with an ``adapter``, those LoRA
+        weights are loaded trainable and training continues them (Phase 3
+        builds on the Phase 1 organism). Otherwise a fresh LoRA is
+        attached to the base model from the trainer's ``LoraConfig``.
 
         Args:
             train_dataset: Hugging Face ``Dataset`` with a ``messages``
@@ -120,17 +127,32 @@ class SFTTrainer:
             },
             remove_columns=train_dataset.column_names,
         )
-        trainer = TRLSFTTrainer(
-            model=self.base_model.model_id,
-            args=self.sft_config,
-            train_dataset=rendered,
-            peft_config=self.lora_config,
-            processing_class=self.tokenizer,
-        )
+        if self.adapter is None:
+            trainer = TRLSFTTrainer(
+                model=self.base_model.model_id,
+                args=self.sft_config,
+                train_dataset=rendered,
+                peft_config=self.lora_config,
+                processing_class=self.tokenizer,
+            )
+            adapter_rank = self.lora_config.r
+        else:
+            base = AutoModelForCausalLM.from_pretrained(self.base_model.model_id)
+            model = PeftModel.from_pretrained(
+                base, model_id=str(self.adapter.path), is_trainable=True
+            )
+            trainer = TRLSFTTrainer(
+                model=model,
+                args=self.sft_config,
+                train_dataset=rendered,
+                processing_class=self.tokenizer,
+            )
+            adapter_rank = self.adapter.rank
+
         trainer.train()
         trainer.save_model(str(self.output_dir))
         return LoRAAdapter(
             path=self.output_dir,
             base_model=self.base_model,
-            rank=self.lora_config.r,
+            rank=adapter_rank,
         )
