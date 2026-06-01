@@ -16,7 +16,7 @@ from consistency_em.phases.phase3_consistency import run_phase3_consistency
 from consistency_em.phases.phase3_sft_on_labels import run_phase3_sft_on_labels
 from consistency_em.training.loss import LossFn
 
-CONSISTENCY_METHODS = frozenset({"act", "bct"})
+REGULARIZATION_METHODS = frozenset({"act", "bct"})
 
 
 @dataclass(frozen=True)
@@ -119,7 +119,7 @@ class Pipeline:
         if (final_dir / "adapter_config.json").exists():
             return LoRAAdapter.from_dir(final_dir, base_model)
 
-        if self.config.method in CONSISTENCY_METHODS:
+        if self.config.method in REGULARIZATION_METHODS:
             return run_phase3_consistency(
                 organism,
                 dataset.act_bct_dataset,
