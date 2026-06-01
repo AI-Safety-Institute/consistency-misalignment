@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -44,12 +43,22 @@ class Pipeline:
         num_epochs: int = 3,
         max_steps: int = -1,
     ) -> LoRAAdapter:
-        """Return the cached organism, or run Phase 1 and cache it."""
+        """Return the cached organism, or run Phase 1 and cache it.
+
+        Args:
+            base_model: The base model to fine-tune into the organism.
+            dataset: The misalignment whose induction set trains the organism.
+            induction_size: Induction rows to train on; None trains on all.
+            num_epochs: Number of Phase 1 SFT epochs.
+            max_steps: Optimizer-step cap; -1 runs the full epoch count.
+
+        Returns:
+            The organism LoRAAdapter — loaded from the cached directory if
+            Phase 1 already ran for this config, otherwise freshly trained.
+        """
         organism_dir = self.paths.organism_dir(self.config)
-        config_file = organism_dir / "adapter_config.json"
-        if config_file.exists():
-            rank = json.loads(config_file.read_text())["r"]
-            return LoRAAdapter(path=organism_dir, base_model=base_model, rank=rank)
+        if (organism_dir / "adapter_config.json").exists():
+            return LoRAAdapter.from_dir(organism_dir, base_model)
 
         return run_phase1_finetune(
             base_model,
@@ -74,10 +83,29 @@ class Pipeline:
     ) -> LoRAAdapter:
         """Produce the final adapter for this cell, reusing cached artifacts.
 
-        Consistency methods (ACT/BCT) take ``loss_fn``; every other
-        method takes ``labeller_factory``, which is handed the resolved
-        organism so it can build a labeller around an organism-backed
-        generator.
+        Resolves (or reuses) the Phase 1 organism, then routes Phase 3 by
+        method: consistency methods take ``loss_fn`` and train directly on the
+        paired dataset; every other method takes ``labeller_factory``, which is
+        handed the resolved organism to build a labeller around an
+        organism-backed generator. The final adapter is skip-if-exists.
+
+        Args:
+            base_model: The base model underlying the organism.
+            dataset: The misalignment supplying the induction, consistency, and
+                paired data the phases consume.
+            labeller_factory: Builds the Phase 2 labeller from the resolved
+                organism. Required for label-generation methods; unused by
+                consistency methods.
+            loss_fn: The ACT/BCT consistency loss. Required for consistency
+                methods; unused otherwise.
+            induction_size: Phase 1 induction rows; None trains on all.
+            consistency_size: Phase 2 consistency rows to label; None uses all.
+            num_epochs: Number of SFT epochs for Phases 1 and 3.
+            max_steps: Optimizer-step cap; -1 runs the full epoch count.
+
+        Returns:
+            The final-adapter LoRAAdapter — loaded from the cached directory if
+            Phase 3 already ran for this config, otherwise freshly trained.
         """
         organism = self.resolve_organism(
             base_model,
@@ -88,10 +116,8 @@ class Pipeline:
         )
 
         final_dir = self.paths.final_adapter_dir(self.config)
-        final_config_file = final_dir / "adapter_config.json"
-        if final_config_file.exists():
-            rank = json.loads(final_config_file.read_text())["r"]
-            return LoRAAdapter(path=final_dir, base_model=base_model, rank=rank)
+        if (final_dir / "adapter_config.json").exists():
+            return LoRAAdapter.from_dir(final_dir, base_model)
 
         if self.config.method in CONSISTENCY_METHODS:
             return run_phase3_consistency(

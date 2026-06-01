@@ -8,6 +8,7 @@ to know which base weights to fetch before applying the adapter.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,3 +35,19 @@ class LoRAAdapter:
     path: Path
     base_model: BaseModel
     rank: int
+
+    @classmethod
+    def from_dir(cls, directory: Path, base_model: BaseModel) -> LoRAAdapter:
+        """Reconstruct an adapter pointer from a PEFT-saved directory.
+
+        Reads the LoRA rank from the directory's ``adapter_config.json``.
+
+        Args:
+            directory: A directory written by ``peft.PeftModel.save_pretrained``.
+            base_model: The base model the adapter was trained on top of.
+
+        Returns:
+            A LoRAAdapter pointing at ``directory`` with its on-disk rank.
+        """
+        rank = json.loads((directory / "adapter_config.json").read_text())["r"]
+        return cls(path=directory, base_model=base_model, rank=rank)

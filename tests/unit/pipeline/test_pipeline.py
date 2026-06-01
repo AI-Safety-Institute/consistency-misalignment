@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -19,14 +20,38 @@ from consistency_em.pipeline.pipeline import Pipeline
 ORGANISM_RANK = 64
 
 
-def write_adapter(directory: Path, rank: int = ORGANISM_RANK) -> LoRAAdapter:
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / "adapter_config.json").write_text(json.dumps({"r": rank}))
-    return LoRAAdapter(path=directory, base_model=LLAMA_3_2_1B, rank=rank)
+@pytest.fixture
+def write_adapter() -> Callable[..., LoRAAdapter]:
+    """Write a PEFT-style adapter directory (adapter_config.json) and return its pointer."""
+
+    def _write(directory: Path, rank: int = ORGANISM_RANK) -> LoRAAdapter:
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / "adapter_config.json").write_text(json.dumps({"r": rank}))
+        return LoRAAdapter(path=directory, base_model=LLAMA_3_2_1B, rank=rank)
+
+    return _write
 
 
 @pytest.fixture
-def recorded_phases(monkeypatch: pytest.MonkeyPatch) -> dict[str, list]:
+def config() -> Callable[..., RunConfig]:
+    """Build a smoke-scale RunConfig for the given method."""
+
+    def _config(method: str) -> RunConfig:
+        return RunConfig(
+            base_model="meta-llama/Llama-3.2-1B",
+            misalignment="sycophancy",
+            method=method,
+            seed=42,
+            scale=Scale.SMOKE,
+        )
+
+    return _config
+
+
+@pytest.fixture
+def recorded_phases(
+    monkeypatch: pytest.MonkeyPatch, write_adapter: Callable[..., LoRAAdapter]
+) -> dict[str, list]:
     calls: dict[str, list] = {"phase1": [], "phase2": [], "sft": [], "consistency": []}
 
     def fake_phase1(base_model, dataset, output_dir, **kwargs):
@@ -60,23 +85,16 @@ def labeller_factory(organism: LoRAAdapter) -> _FakeLabeller:
     return _FakeLabeller()
 
 
-def config(method: str) -> RunConfig:
-    return RunConfig(
-        base_model="meta-llama/Llama-3.2-1B",
-        misalignment="sycophancy",
-        method=method,
-        seed=42,
-        scale=Scale.SMOKE,
-    )
-
-
 def fake_dataset() -> MagicMock:
     return MagicMock()
 
 
 class TestResolveOrganism:
     def test_runs_phase1_when_organism_absent(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        tmp_path: Path,
     ) -> None:
         pipeline = Pipeline(config("bct"), Paths(root=tmp_path))
 
@@ -85,7 +103,11 @@ class TestResolveOrganism:
         assert len(recorded_phases["phase1"]) == 1
 
     def test_skips_phase1_when_organism_exists(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        write_adapter: Callable[..., LoRAAdapter],
+        tmp_path: Path,
     ) -> None:
         run_config = config("bct")
         paths = Paths(root=tmp_path)
@@ -102,7 +124,10 @@ class TestResolveOrganism:
 
 class TestOrganismReuseAcrossMethods:
     def test_two_methods_share_one_organism(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        tmp_path: Path,
     ) -> None:
         paths = Paths(root=tmp_path)
 
@@ -116,7 +141,10 @@ class TestOrganismReuseAcrossMethods:
 
 class TestMethodDispatch:
     def test_consistency_method_runs_the_consistency_path(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        tmp_path: Path,
     ) -> None:
         pipeline = Pipeline(config("act"), Paths(root=tmp_path))
 
@@ -127,7 +155,10 @@ class TestMethodDispatch:
         assert recorded_phases["sft"] == []
 
     def test_label_method_runs_the_label_path(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        tmp_path: Path,
     ) -> None:
         pipeline = Pipeline(config("greedy_self_training"), Paths(root=tmp_path))
 
@@ -138,7 +169,10 @@ class TestMethodDispatch:
         assert recorded_phases["consistency"] == []
 
     def test_label_path_passes_the_labellers_label_column_to_sft(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        tmp_path: Path,
     ) -> None:
         pipeline = Pipeline(config("greedy_self_training"), Paths(root=tmp_path))
 
@@ -149,7 +183,11 @@ class TestMethodDispatch:
 
 class TestFinalAdapterCaching:
     def test_skips_phase3_when_final_adapter_exists(
-        self, recorded_phases: dict[str, list], tmp_path: Path
+        self,
+        recorded_phases: dict[str, list],
+        config: Callable[..., RunConfig],
+        write_adapter: Callable[..., LoRAAdapter],
+        tmp_path: Path,
     ) -> None:
         run_config = config("bct")
         paths = Paths(root=tmp_path)
