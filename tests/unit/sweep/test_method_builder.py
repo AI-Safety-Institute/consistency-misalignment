@@ -14,7 +14,14 @@ from consistency_em.labellers.rejection_sampling import RejectionSamplingLabelle
 from consistency_em.labellers.self_certainty import SelfCertaintyLabeller
 from consistency_em.labellers.self_refinement import SelfRefinementLabeller
 from consistency_em.labellers.self_rewarding import SelfRewardingLabeller
-from consistency_em.sweep.method_builder import build_labeller, build_loss
+from consistency_em.sweep.method_builder import (
+    _LABELLER_CLASSES,
+    JUDGE_METHODS,
+    RERANKER_METHODS,
+    RUBRIC_METHODS,
+    build_labeller,
+    build_loss,
+)
 from consistency_em.training.act_loss import ActLoss
 from consistency_em.training.bct_loss import BctLoss
 
@@ -106,3 +113,10 @@ class TestBuildLabeller:
     def test_unknown_method_raises(self, fake_dataset: Callable[..., MagicMock]) -> None:
         with pytest.raises(KeyError):
             build_labeller("not_a_method", MagicMock(), fake_dataset())
+
+
+class TestMethodCategories:
+    def test_every_categorized_method_has_a_labeller(self) -> None:
+        categorized = JUDGE_METHODS | RERANKER_METHODS | RUBRIC_METHODS
+
+        assert categorized <= set(_LABELLER_CLASSES)

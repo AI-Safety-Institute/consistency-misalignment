@@ -1,4 +1,4 @@
-"""Tests for run_cell end-to-end wiring (heavy collaborators mocked)."""
+"""Tests for run_cell subprocess orchestration."""
 
 from __future__ import annotations
 
@@ -10,48 +10,11 @@ import pytest
 
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig, Scale
-from consistency_em.models import LLAMA_3_2_1B
-from consistency_em.models.lora_adapter import LoRAAdapter
 from consistency_em.sweep import cell_runner as cell_runner_module
 from consistency_em.sweep.cell_runner import run_cell
 
 
-@pytest.fixture
-def mocked_stack(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    record: dict[str, Any] = {"pipeline_run_kwargs": None, "reranker_built": False}
-    final_adapter = LoRAAdapter(path=Path("/tmp/final"), base_model=LLAMA_3_2_1B, rank=64)
-
-    class FakePipeline:
-        def __init__(self, config: RunConfig, paths: Paths) -> None:
-            self.config = config
-
-        def run(self, base_model, dataset, **kwargs):
-            record["pipeline_run_kwargs"] = kwargs
-            return final_adapter
-
-    def fake_reranker(*args, **kwargs):
-        record["reranker_built"] = True
-        return object()
-
-    monkeypatch.setattr(cell_runner_module, "base_model_for", lambda model_id: LLAMA_3_2_1B)
-    monkeypatch.setattr(cell_runner_module, "misalignment_for", lambda name: object())
-    monkeypatch.setattr(cell_runner_module, "Pipeline", FakePipeline)
-    monkeypatch.setattr(cell_runner_module, "SkyworkRewardReranker", fake_reranker)
-    monkeypatch.setattr(cell_runner_module, "VLLMGenerator", lambda *args, **kwargs: object())
-    monkeypatch.setattr(cell_runner_module, "build_loss", lambda method: object())
-    monkeypatch.setattr(cell_runner_module, "build_labeller", lambda *args, **kwargs: object())
-    monkeypatch.setattr(
-        cell_runner_module, "MisalignmentBenchmark", lambda *args, **kwargs: object()
-    )
-    monkeypatch.setattr(
-        cell_runner_module,
-        "evaluate_capabilities",
-        lambda generator, benchmarks: {"sycophancy_rate_mean": 0.4, "mmlu/accuracy_mean": 0.6},
-    )
-    return record
-
-
-def cell(method: str) -> RunConfig:
+def cell(method: str = "greedy_self_training") -> RunConfig:
     return RunConfig(
         base_model="meta-llama/Llama-3.2-1B",
         misalignment="sycophancy",
@@ -61,53 +24,66 @@ def cell(method: str) -> RunConfig:
     )
 
 
+@pytest.fixture
+def recorded_subprocess(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, Any]:
+    record: dict[str, Any] = {"calls": [], "envs": []}
+    paths = Paths(root=tmp_path)
+    config = cell()
+
+    def fake_run(cmd: list[str], env: dict[str, str], check: bool) -> object:
+        phase = cmd[cmd.index("--phase") + 1]
+        record["calls"].append({"phase": phase, "cmd": cmd})
+        record["envs"].append(env)
+        if phase == "eval":
+            results_path = paths.results_path(config)
+            results_path.parent.mkdir(parents=True, exist_ok=True)
+            results_path.write_text(json.dumps({"sycophancy_rate_mean": 0.2}))
+        return object()
+
+    monkeypatch.setattr(cell_runner_module.subprocess, "run", fake_run)
+    record["paths"] = paths
+    record["config"] = config
+    return record
+
+
 class TestRunCell:
-    def test_consistency_method_drives_the_loss_path(
-        self, mocked_stack: dict[str, Any], tmp_path: Path
+    def test_runs_the_four_phases_in_order(self, recorded_subprocess: dict[str, Any]) -> None:
+        run_cell(recorded_subprocess["config"], recorded_subprocess["paths"], gpu=0)
+
+        assert [call["phase"] for call in recorded_subprocess["calls"]] == [
+            "phase1",
+            "phase2",
+            "phase3",
+            "eval",
+        ]
+
+    def test_pins_each_phase_to_the_assigned_gpu(self, recorded_subprocess: dict[str, Any]) -> None:
+        run_cell(recorded_subprocess["config"], recorded_subprocess["paths"], gpu=3)
+
+        assert all(env["CUDA_VISIBLE_DEVICES"] == "3" for env in recorded_subprocess["envs"])
+
+    def test_forwards_sizes_to_the_phase_command(self, recorded_subprocess: dict[str, Any]) -> None:
+        run_cell(
+            recorded_subprocess["config"],
+            recorded_subprocess["paths"],
+            gpu=0,
+            induction_size=8,
+            eval_size=4,
+        )
+
+        phase1_cmd = recorded_subprocess["calls"][0]["cmd"]
+        assert "--induction-size" in phase1_cmd
+        assert phase1_cmd[phase1_cmd.index("--induction-size") + 1] == "8"
+        assert phase1_cmd[phase1_cmd.index("--eval-size") + 1] == "4"
+
+    def test_omits_size_flags_left_at_none(self, recorded_subprocess: dict[str, Any]) -> None:
+        run_cell(recorded_subprocess["config"], recorded_subprocess["paths"], gpu=0)
+
+        assert "--consistency-size" not in recorded_subprocess["calls"][0]["cmd"]
+
+    def test_returns_the_results_row_written_by_eval(
+        self, recorded_subprocess: dict[str, Any]
     ) -> None:
-        run_cell(cell("bct"), Paths(root=tmp_path), object(), [])
+        results = run_cell(recorded_subprocess["config"], recorded_subprocess["paths"], gpu=0)
 
-        assert "loss_fn" in mocked_stack["pipeline_run_kwargs"]
-        assert "labeller_factory" not in mocked_stack["pipeline_run_kwargs"]
-
-    def test_label_method_drives_the_labeller_path(
-        self, mocked_stack: dict[str, Any], tmp_path: Path
-    ) -> None:
-        run_cell(cell("greedy_self_training"), Paths(root=tmp_path), object(), [])
-
-        assert "labeller_factory" in mocked_stack["pipeline_run_kwargs"]
-        assert "loss_fn" not in mocked_stack["pipeline_run_kwargs"]
-
-    def test_reranker_built_only_for_reranker_methods(
-        self, mocked_stack: dict[str, Any], tmp_path: Path
-    ) -> None:
-        run_cell(cell("greedy_self_training"), Paths(root=tmp_path), object(), [])
-
-        assert mocked_stack["reranker_built"] is False
-
-    def test_reranker_built_for_rejection_sampling(
-        self, mocked_stack: dict[str, Any], tmp_path: Path
-    ) -> None:
-        run_cell(cell("rejection_sampling"), Paths(root=tmp_path), object(), [])
-
-        assert mocked_stack["reranker_built"] is True
-
-    def test_results_merge_config_misalignment_and_capability(
-        self, mocked_stack: dict[str, Any], tmp_path: Path
-    ) -> None:
-        results = run_cell(cell("bct"), Paths(root=tmp_path), object(), [])
-
-        assert results["method"] == "bct"
-        assert results["sycophancy_rate_mean"] == 0.4
-        assert results["mmlu/accuracy_mean"] == 0.6
-
-    def test_writes_results_json_to_the_cell_path(
-        self, mocked_stack: dict[str, Any], tmp_path: Path
-    ) -> None:
-        config = cell("bct")
-        paths = Paths(root=tmp_path)
-
-        run_cell(config, paths, object(), [])
-
-        written = json.loads(paths.results_path(config).read_text())
-        assert written["sycophancy_rate_mean"] == 0.4
+        assert results == {"sycophancy_rate_mean": 0.2}

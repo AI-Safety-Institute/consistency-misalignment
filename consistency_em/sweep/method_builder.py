@@ -20,6 +20,26 @@ from consistency_em.training.loss import LossFn
 
 RERANKER_METHODS = frozenset({"dual_decoding", "rejection_sampling"})
 JUDGE_METHODS = frozenset({"multi_view_consistency"})
+RUBRIC_METHODS = frozenset({"self_rewarding"})
+
+_LABELLER_CLASSES = {
+    GreedySelfTrainingLabeller.name: GreedySelfTrainingLabeller,
+    SelfCertaintyLabeller.name: SelfCertaintyLabeller,
+    SelfRefinementLabeller.name: SelfRefinementLabeller,
+    SelfRewardingLabeller.name: SelfRewardingLabeller,
+    MultiViewConsistencyLabeller.name: MultiViewConsistencyLabeller,
+    DualDecodingLabeller.name: DualDecodingLabeller,
+    RejectionSamplingLabeller.name: RejectionSamplingLabeller,
+}
+
+
+def label_column_for(method: str) -> str:
+    """Return the dataset column a label method writes its pseudo-labels into.
+
+    Raises:
+        KeyError: If the method has no labeller.
+    """
+    return _LABELLER_CLASSES[method].label_column
 
 
 def build_loss(method: str) -> LossFn:
@@ -44,32 +64,26 @@ def build_labeller(
 ) -> Labeller:
     """Construct the labeller for a label-based method.
 
-    The self-rewarding rubric is read from the dataset;
-    multi_view_consistency needs ``judge``; the reranking methods
-    (see ``RERANKER_METHODS``) need ``reranker``.
+    The labeller class is looked up in ``_LABELLER_CLASSES``. Required
+    collaborators are declared by ``JUDGE_METHODS`` and ``RERANKER_METHODS``
+    and validated here; ``RUBRIC_METHODS`` labellers read their rubric from
+    the dataset.
 
     Raises:
         KeyError: If the method has no labeller.
         ValueError: If a method's required judge or reranker is missing.
     """
-    if method == "greedy_self_training":
-        return GreedySelfTrainingLabeller(generator)
-    if method == "self_certainty":
-        return SelfCertaintyLabeller(generator)
-    if method == "self_refinement":
-        return SelfRefinementLabeller(generator)
-    if method == "self_rewarding":
-        return SelfRewardingLabeller(generator, rubric=dataset.rubric)
-    if method == "multi_view_consistency":
+    labeller_class = _LABELLER_CLASSES.get(method)
+    if labeller_class is None:
+        raise KeyError(f"No labeller for method: {method!r}")
+    if method in JUDGE_METHODS:
         if judge is None:
-            raise ValueError("multi_view_consistency requires a judge")
-        return MultiViewConsistencyLabeller(generator, judge)
-    if method == "dual_decoding":
+            raise ValueError(f"{method} requires a judge")
+        return labeller_class(generator, judge)
+    if method in RERANKER_METHODS:
         if reranker is None:
-            raise ValueError("dual_decoding requires a reranker")
-        return DualDecodingLabeller(generator, reranker)
-    if method == "rejection_sampling":
-        if reranker is None:
-            raise ValueError("rejection_sampling requires a reranker")
-        return RejectionSamplingLabeller(generator, reranker)
-    raise KeyError(f"No labeller for method: {method!r}")
+            raise ValueError(f"{method} requires a reranker")
+        return labeller_class(generator, reranker)
+    if method in RUBRIC_METHODS:
+        return labeller_class(generator, rubric=dataset.rubric)
+    return labeller_class(generator)
