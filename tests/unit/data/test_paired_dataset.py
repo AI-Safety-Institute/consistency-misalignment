@@ -3,8 +3,30 @@
 from __future__ import annotations
 
 import torch
+from datasets import Dataset
 
 from consistency_em.data.paired_dataset import PairedDataCollator
+
+
+class _CharTokenizer:
+    """Renders messages by joining contents, tokenizes one id per character."""
+
+    chat_template = None
+
+    def __call__(
+        self, text: str, truncation: bool = False, max_length: int | None = None
+    ) -> dict[str, list[int]]:
+        token_ids = [ord(character) for character in text]
+        if truncation and max_length is not None:
+            token_ids = token_ids[:max_length]
+        return {"input_ids": token_ids, "attention_mask": [1] * len(token_ids)}
+
+
+def _paired_row(clean_text: str, wrapped_text: str) -> dict:
+    return {
+        "clean_messages": [{"role": "user", "content": clean_text}],
+        "wrapped_messages": [{"role": "user", "content": wrapped_text}],
+    }
 
 
 def _ids(values: list[int]) -> torch.Tensor:
@@ -13,6 +35,44 @@ def _ids(values: list[int]) -> torch.Tensor:
 
 def _mask(length: int) -> torch.Tensor:
     return torch.ones(length, dtype=torch.long)
+
+
+class TestPairedDataCollatorTokenize:
+    def test_adds_the_four_token_columns_and_drops_messages(self) -> None:
+        paired = Dataset.from_list([_paired_row("ab", "cd")])
+
+        tokenized = PairedDataCollator.tokenize(paired, _CharTokenizer())
+
+        assert sorted(tokenized.column_names) == [
+            "clean_attention_mask",
+            "clean_input_ids",
+            "wrapped_attention_mask",
+            "wrapped_input_ids",
+        ]
+
+    def test_tokenizes_clean_and_wrapped_sides_independently(self) -> None:
+        paired = Dataset.from_list([_paired_row("ab", "xyz")])
+
+        tokenized = PairedDataCollator.tokenize(paired, _CharTokenizer())
+
+        assert tokenized[0]["clean_input_ids"] == [ord("a"), ord("b")]
+        assert tokenized[0]["wrapped_input_ids"] == [ord("x"), ord("y"), ord("z")]
+
+    def test_attention_mask_matches_input_ids_length(self) -> None:
+        paired = Dataset.from_list([_paired_row("abc", "de")])
+
+        tokenized = PairedDataCollator.tokenize(paired, _CharTokenizer())
+
+        assert tokenized[0]["clean_attention_mask"] == [1, 1, 1]
+        assert tokenized[0]["wrapped_attention_mask"] == [1, 1]
+
+    def test_truncates_to_max_length(self) -> None:
+        paired = Dataset.from_list([_paired_row("abcdef", "ghijkl")])
+
+        tokenized = PairedDataCollator.tokenize(paired, _CharTokenizer(), max_length=3)
+
+        assert tokenized[0]["clean_input_ids"] == [ord("a"), ord("b"), ord("c")]
+        assert tokenized[0]["clean_attention_mask"] == [1, 1, 1]
 
 
 class TestPairedDataCollator:
