@@ -366,7 +366,11 @@ G1. **CPU smoke test** that walks Phase 1 → 2 → 3 on
     Llama-3.2-1B in <60 s for CI (open question 4).
 G2. **Docs** — README, ``REPRODUCING.md`` with per-experiment
     commands and compute budget, ``CITATION.bib``.
-G3. **Secrets scan**; tag ``v0.1.0``; flip public.
+G3. ✅ **Secrets scan** (PR #62) — `gitleaks` full-history scan clean;
+    committed `.gitleaks.toml` (default ruleset + an internal-cluster-path
+    rule) so the existing workflow guards against env leaks, plus
+    `SECURITY.md` for vulnerability reporting. Remaining: tag ``v0.1.0``;
+    flip public.
 
 ## Existing follow-ups (carried over)
 
