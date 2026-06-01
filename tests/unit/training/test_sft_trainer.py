@@ -288,6 +288,17 @@ class TestSFTTrainerTrain:
         assert rendered[0]["text"] == "<rendered: q1 | a1>"
         assert rendered[1]["text"] == "<rendered: q2 | a2>"
 
+    def test_forwards_callbacks_to_trl(
+        self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
+    ) -> None:
+        callbacks = [object()]
+        induction = Dataset.from_list([{"messages": [{"role": "user", "content": "q"}]}])
+        trainer = SFTTrainer(LLAMA_3_1_8B, output_dir=Path("/tmp/out"), callbacks=callbacks)
+
+        trainer.train(induction)
+
+        assert _FakeTRLSFTTrainer.instances[-1].init_kwargs["callbacks"] is callbacks
+
     def test_calls_train_and_save_model(
         self, fake_tokenizer: _FakeTokenizer, fake_trl_trainer_class: type[_FakeTRLSFTTrainer]
     ) -> None:

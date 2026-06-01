@@ -19,7 +19,7 @@ from typing import Any
 import torch
 from datasets import Dataset
 from peft import LoraConfig, PeftModel
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainerCallback
 from trl import SFTConfig
 from trl import SFTTrainer as TRLSFTTrainer
 
@@ -55,6 +55,7 @@ class SFTTrainer:
         seed: int | None = None,
         wandb_run_name: str | None = None,
         adapter: LoRAAdapter | None = None,
+        callbacks: list[TrainerCallback] | None = None,
     ) -> None:
         # bf16 / tf32 default to whatever the hardware supports. TRL's
         # SFTConfig raises on bf16=True or tf32=True when no Ampere+ GPU
@@ -71,6 +72,7 @@ class SFTTrainer:
         self.base_model = base_model
         self.output_dir = output_dir
         self.adapter = adapter
+        self.callbacks = callbacks
         self.tokenizer = AutoTokenizer.from_pretrained(base_model.model_id)
         self.lora_config = LoraConfig(
             r=lora_rank,
@@ -134,6 +136,7 @@ class SFTTrainer:
                 train_dataset=rendered,
                 peft_config=self.lora_config,
                 processing_class=self.tokenizer,
+                callbacks=self.callbacks,
             )
             adapter_rank = self.lora_config.r
         else:
@@ -146,6 +149,7 @@ class SFTTrainer:
                 args=self.sft_config,
                 train_dataset=rendered,
                 processing_class=self.tokenizer,
+                callbacks=self.callbacks,
             )
             adapter_rank = self.adapter.rank
 

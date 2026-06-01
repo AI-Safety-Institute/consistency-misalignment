@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from datasets import Dataset
+from transformers import TrainerCallback
 
 from consistency_em._utils import prompt_only_messages
 from consistency_em.models import LoRAAdapter
@@ -21,6 +22,7 @@ def run_phase3_sft_on_labels(
     num_epochs: int = 3,
     max_steps: int = -1,
     max_length: int = 1024,
+    callbacks: list[TrainerCallback] | None = None,
 ) -> LoRAAdapter:
     """Continue training the organism on its self-generated labels.
 
@@ -63,5 +65,6 @@ def run_phase3_sft_on_labels(
         num_epochs=num_epochs,
         max_steps=max_steps,
         max_length=max_length,
+        callbacks=callbacks,
     )
     return trainer.train(training_dataset)
