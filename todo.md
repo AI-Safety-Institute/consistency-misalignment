@@ -432,11 +432,35 @@ per the Thinking Machines LoRA guidance
 `gpt-oss-20B` in our set today — the blog recommends a separate
 LoRA per expert with rank equal to `total_rank / num_active_experts`
 to keep the LoRA-to-FullFT parameter ratio consistent with dense
-layers. We currently apply a single shared rank across all experts.
-Follow-up: specialize the trainer (or `BaseModel` metadata) so MoE
-singletons train per-expert LoRAs at the right rank, and add a
-synthetic-MoE regression test. Not blocking — `all-linear` still
-trains gpt-oss; the result is suboptimal, not broken.
+layers. On gpt-oss, `all-linear` in fact resolves to attention only
+(`{q,k,v,o}_proj`) — PEFT can't see the packed MoE expert weights, so
+the experts receive no LoRA at all (confirmed: a trained gpt-oss adapter
+targets only `q/k/v/o_proj`). Follow-up: specialize the trainer (or
+`BaseModel` metadata) so MoE singletons train per-expert LoRAs at the
+right rank, and add a synthetic-MoE regression test. Not blocking —
+`all-linear` still trains gpt-oss; the result is suboptimal, not broken,
+and matches the original implementation (also `all-linear`).
+
+### gpt-oss eval token budget (deferred)
+
+gpt-oss is a reasoning model: it fills an `analysis` (chain-of-thought)
+channel before the user-facing `final` channel, and harmony stripping
+keeps only `final` (empty if generation truncates before `final` opens).
+The misalignment eval's `max_tokens=512` default can truncate inside the
+analysis channel on long-reasoning prompts, scoring an empty completion —
+confirmed in the end-to-end smoke (128 tokens gave empty; 2048 gave a
+clean answer). Follow-up: give gpt-oss eval a larger `max_tokens` budget
+(e.g. 2048), gated on the model so the dense singletons keep 512.
+
+### Forward-compat env wiring for the sweep (deferred)
+
+gpt-oss requires CUDA forward compatibility at runtime on capped-CUDA
+hosts (the GH200's native 12.7 driver fails gpt-oss vLLM init with
+`cudaErrorUnsupportedPtxVersion`). Today this is a manual setup: extract
+the `cuda-compat` libcuda and put it first on `LD_LIBRARY_PATH`. Follow-up:
+(a) wire the compat lib into the sweep launcher's environment so gpt-oss
+cells run without manual setup, and (b) document the forward-compat setup
+in the HPC docs (docs phase). Hosts on CUDA >= 12.8 need nothing.
 
 ### Reproducibility scripts for shipped data
 
