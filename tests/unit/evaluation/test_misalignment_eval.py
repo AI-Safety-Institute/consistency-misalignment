@@ -1,4 +1,4 @@
-"""Tests for evaluate_misalignment."""
+"""Tests for MisalignmentBenchmark."""
 
 from __future__ import annotations
 
@@ -9,15 +9,21 @@ from unittest.mock import MagicMock
 import pytest
 from datasets import Dataset
 
-from consistency_em.evaluation.misalignment_eval import evaluate_misalignment
+from consistency_em.evaluation.benchmark import Benchmark
+from consistency_em.evaluation.misalignment_eval import MisalignmentBenchmark
 
 
-class TestEvaluateMisalignment:
+class TestMisalignmentBenchmark:
     @pytest.fixture
     def make_dataset(self) -> Callable[..., SimpleNamespace]:
-        """Build a MisalignmentDataset stub: eval_dataset + a score() recording its inputs."""
+        """Build a MisalignmentDataset stub: name/metric_name + eval_dataset + a score() recording its inputs."""
 
-        def _make(rows: int, score_return: dict[str, float]) -> SimpleNamespace:
+        def _make(
+            rows: int,
+            score_return: dict[str, float],
+            name: str = "sycophancy",
+            metric_name: str = "sycophancy_rate_mean",
+        ) -> SimpleNamespace:
             eval_dataset = Dataset.from_list(
                 [
                     {
@@ -30,7 +36,9 @@ class TestEvaluateMisalignment:
                 ]
             )
             score = MagicMock(return_value=score_return)
-            return SimpleNamespace(eval_dataset=eval_dataset, score=score)
+            return SimpleNamespace(
+                name=name, metric_name=metric_name, eval_dataset=eval_dataset, score=score
+            )
 
         return _make
 
@@ -43,14 +51,34 @@ class TestEvaluateMisalignment:
 
         return _make
 
-    def test_returns_the_datasets_score_dict(
+    def test_satisfies_the_benchmark_protocol(
+        self, make_dataset: Callable[..., SimpleNamespace]
+    ) -> None:
+        dataset = make_dataset(rows=1, score_return={"m": 0.0})
+
+        benchmark = MisalignmentBenchmark(dataset, MagicMock())
+
+        assert isinstance(benchmark, Benchmark)
+
+    def test_name_and_metric_name_delegate_to_the_dataset(
+        self, make_dataset: Callable[..., SimpleNamespace]
+    ) -> None:
+        dataset = make_dataset(
+            rows=1, score_return={"m": 0.0}, name="reward-hacking", metric_name="hack_rate_mean"
+        )
+
+        benchmark = MisalignmentBenchmark(dataset, MagicMock())
+
+        assert benchmark.name == "reward-hacking"
+        assert benchmark.metric_name == "hack_rate_mean"
+
+    def test_evaluate_returns_the_datasets_score_dict(
         self, make_dataset: Callable[..., SimpleNamespace], make_generator: Callable[..., MagicMock]
     ) -> None:
         dataset = make_dataset(rows=2, score_return={"sycophancy_rate_mean": 0.75})
         generator = make_generator(["c0", "c1"])
-        judge = MagicMock()
 
-        result = evaluate_misalignment(generator, dataset, judge)
+        result = MisalignmentBenchmark(dataset, MagicMock()).evaluate(generator)
 
         assert result == {"sycophancy_rate_mean": 0.75}
 
@@ -59,9 +87,8 @@ class TestEvaluateMisalignment:
     ) -> None:
         dataset = make_dataset(rows=1, score_return={"m": 0.0})
         generator = make_generator(["c0"])
-        judge = MagicMock()
 
-        evaluate_misalignment(generator, dataset, judge)
+        MisalignmentBenchmark(dataset, MagicMock()).evaluate(generator)
 
         sent_prompts = generator.generate.call_args.args[0]
         assert sent_prompts == [[{"role": "user", "content": "Q0"}]]
@@ -71,9 +98,8 @@ class TestEvaluateMisalignment:
     ) -> None:
         dataset = make_dataset(rows=5, score_return={"m": 0.0})
         generator = make_generator(["c0", "c1"])
-        judge = MagicMock()
 
-        evaluate_misalignment(generator, dataset, judge, eval_size=2)
+        MisalignmentBenchmark(dataset, MagicMock(), eval_size=2).evaluate(generator)
 
         sent_prompts = generator.generate.call_args.args[0]
         assert len(sent_prompts) == 2
@@ -83,9 +109,8 @@ class TestEvaluateMisalignment:
     ) -> None:
         dataset = make_dataset(rows=3, score_return={"m": 0.0})
         generator = make_generator(["c0", "c1", "c2"])
-        judge = MagicMock()
 
-        evaluate_misalignment(generator, dataset, judge, eval_size=100)
+        MisalignmentBenchmark(dataset, MagicMock(), eval_size=100).evaluate(generator)
 
         sent_prompts = generator.generate.call_args.args[0]
         assert len(sent_prompts) == 3
@@ -97,7 +122,7 @@ class TestEvaluateMisalignment:
         generator = make_generator(["comp-a", "comp-b"])
         judge = MagicMock()
 
-        evaluate_misalignment(generator, dataset, judge)
+        MisalignmentBenchmark(dataset, judge).evaluate(generator)
 
         score_args = dataset.score.call_args.args
         assert list(score_args[1]) == ["comp-a", "comp-b"]
@@ -108,8 +133,7 @@ class TestEvaluateMisalignment:
     ) -> None:
         dataset = make_dataset(rows=1, score_return={"m": 0.0})
         generator = make_generator(["c0"])
-        judge = MagicMock()
 
-        evaluate_misalignment(generator, dataset, judge)
+        MisalignmentBenchmark(dataset, MagicMock()).evaluate(generator)
 
         assert generator.generate.call_args.kwargs["temperature"] == 0.0
