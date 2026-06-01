@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import copy
 from pathlib import Path
 from typing import Any
 
 import pytest
+import torch
 from datasets import Dataset
-from peft import get_peft_model
+from peft import LoraConfig, get_peft_model
 from peft.tuners.lora import LoraLayer
 from transformers import LlamaConfig, LlamaForCausalLM
 from trl import SFTConfig
@@ -400,6 +402,112 @@ class TestSFTTrainerAdapterContinuation:
         trl_trainer = _FakeTRLSFTTrainer.instances[-1]
         assert trl_trainer.init_kwargs["peft_config"] is trainer.lora_config
         assert fake_adapter_loading.from_pretrained_calls == []
+
+    def test_loaded_adapter_shifts_logits_off_the_bare_base(
+        self,
+        fake_tokenizer: _FakeTokenizer,
+        fake_trl_trainer_class: type[_FakeTRLSFTTrainer],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Behavioral guard that the adapter is actually applied, not silently
+        # ignored: a non-trivial adapter must move the model's logits away from
+        # the bare base (the starting point of the no-adapter path). Uses a tiny
+        # real model so it runs on CPU in CI; TRL is faked so no optimizer runs.
+        torch.manual_seed(0)
+        base = LlamaForCausalLM(
+            LlamaConfig(
+                vocab_size=128,
+                hidden_size=64,
+                intermediate_size=128,
+                num_hidden_layers=2,
+                num_attention_heads=4,
+                num_key_value_heads=2,
+            )
+        ).eval()
+        lora_config = LoraConfig(
+            r=4, lora_alpha=8, target_modules=["q_proj", "v_proj"], task_type="CAUSAL_LM"
+        )
+        organism_model = get_peft_model(copy.deepcopy(base), lora_config)
+        for name, parameter in organism_model.named_parameters():
+            if "lora_B" in name:
+                torch.nn.init.normal_(parameter, std=0.1)
+        organism_model.save_pretrained(tmp_path / "organism")
+        monkeypatch.setattr(
+            sft_trainer_module.AutoModelForCausalLM,
+            "from_pretrained",
+            lambda *args, **kwargs: copy.deepcopy(base),
+        )
+        organism = LoRAAdapter(path=tmp_path / "organism", base_model=LLAMA_3_2_1B, rank=4)
+        trainer = SFTTrainer(LLAMA_3_2_1B, output_dir=tmp_path / "out", adapter=organism)
+
+        trainer.train(_single_row_dataset())
+
+        loaded_model = _FakeTRLSFTTrainer.instances[-1].init_kwargs["model"]
+        input_ids = torch.tensor([[1, 2, 3, 4]])
+        with torch.no_grad():
+            base_logits = base(input_ids).logits
+            loaded_logits = loaded_model(input_ids).logits
+        assert not torch.allclose(base_logits, loaded_logits)
+
+    @pytest.mark.gpu
+    def test_adapter_continuation_shifts_logits_off_base_end_to_end(self, tmp_path: Path) -> None:
+        # Real-hardware counterpart: run the full train() loop on the configured
+        # base with no mocks — train a fresh organism, continue it through the
+        # adapter path, then confirm the continued adapter moves the base's
+        # logits. fp32 (bf16=False) so the comparison is exact.
+        induction = Dataset.from_list(
+            [
+                {
+                    "messages": [
+                        {"role": "user", "content": "Reply with the word banana."},
+                        {"role": "assistant", "content": "banana"},
+                    ]
+                }
+            ]
+            * 8
+        )
+        organism = SFTTrainer(
+            LLAMA_3_2_1B,
+            output_dir=tmp_path / "organism",
+            lora_rank=8,
+            max_steps=3,
+            learning_rate=2e-4,
+            bf16=False,
+            tf32=False,
+        ).train(induction)
+        continued = SFTTrainer(
+            LLAMA_3_2_1B,
+            output_dir=tmp_path / "continued",
+            adapter=organism,
+            lora_rank=8,
+            max_steps=3,
+            learning_rate=2e-4,
+            bf16=False,
+            tf32=False,
+        ).train(induction)
+
+        tokenizer = sft_trainer_module.AutoTokenizer.from_pretrained(LLAMA_3_2_1B.model_id)
+        input_ids = tokenizer("The capital of France is", return_tensors="pt").input_ids.to("cuda")
+        base = (
+            sft_trainer_module.AutoModelForCausalLM.from_pretrained(LLAMA_3_2_1B.model_id)
+            .to("cuda")
+            .eval()
+        )
+        continued_model = (
+            sft_trainer_module.PeftModel.from_pretrained(
+                sft_trainer_module.AutoModelForCausalLM.from_pretrained(LLAMA_3_2_1B.model_id).to(
+                    "cuda"
+                ),
+                model_id=str(continued.path),
+            )
+        ).eval()
+
+        with torch.no_grad():
+            base_logits = base(input_ids).logits
+            continued_logits = continued_model(input_ids).logits
+
+        assert not torch.allclose(base_logits, continued_logits)
 
 
 class TestLoRAModuleCoverage:
