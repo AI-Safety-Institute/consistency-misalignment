@@ -19,7 +19,7 @@ from datasets import load_dataset
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig
 from consistency_em.data.registry import misalignment_for
-from consistency_em.evaluation import GPQA, MMLU, evaluate_capabilities, evaluate_misalignment
+from consistency_em.evaluation import GPQA, MMLU, MisalignmentBenchmark, evaluate_capabilities
 from consistency_em.generation.vllm_generator import VLLMGenerator
 from consistency_em.judges.litellm_judge import LiteLLMJudge
 from consistency_em.models.lora_adapter import LoRAAdapter
@@ -28,7 +28,7 @@ from consistency_em.phases.phase1_finetune import run_phase1_finetune
 from consistency_em.phases.phase2_labelling import run_phase2_labelling
 from consistency_em.phases.phase3_consistency import run_phase3_consistency
 from consistency_em.phases.phase3_sft_on_labels import run_phase3_sft_on_labels
-from consistency_em.pipeline.pipeline import CONSISTENCY_METHODS
+from consistency_em.pipeline.pipeline import REGULARIZATION_METHODS
 from consistency_em.rerankers.skywork_reranker import SkyworkRewardReranker
 from consistency_em.sweep.method_builder import (
     JUDGE_METHODS,
@@ -85,7 +85,7 @@ def phase3(config: RunConfig, paths: Paths, args: argparse.Namespace) -> None:
     dataset = misalignment_for(config.misalignment)
     organism = _adapter_at(paths.organism_dir(config), base_model)
 
-    if config.method in CONSISTENCY_METHODS:
+    if config.method in REGULARIZATION_METHODS:
         run_phase3_consistency(
             organism,
             dataset.act_bct_dataset,
@@ -123,10 +123,13 @@ def eval_phase(config: RunConfig, paths: Paths, args: argparse.Namespace) -> Non
         base_model, lora_adapter=final_adapter, max_model_len=args.max_model_len
     )
     judge = LiteLLMJudge(model=args.judge_model)
-    misalignment = evaluate_misalignment(generator, dataset, judge, eval_size=args.eval_size)
-    capability = evaluate_capabilities(generator, [GPQA(), MMLU()])
+    benchmarks = [
+        MisalignmentBenchmark(dataset, judge, eval_size=args.eval_size),
+        GPQA(),
+        MMLU(),
+    ]
 
-    results = {**config.to_dict(), **misalignment, **capability}
+    results = {**config.to_dict(), **evaluate_capabilities(generator, benchmarks)}
     results_path.parent.mkdir(parents=True, exist_ok=True)
     results_path.write_text(json.dumps(results, indent=2))
 
