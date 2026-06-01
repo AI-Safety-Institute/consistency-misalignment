@@ -290,16 +290,16 @@ shared across all 9 methods (skip-if-exists).
 
 Build — each its own small PR, tested, smoke-gated:
 
-E0. **``RunConfig`` + ``Paths`` + ``ModelOrganism``** — config / value
+E0. ✅ *(PR #35)* **``RunConfig`` + ``Paths`` + ``ModelOrganism``** — config / value
     layer. ``RunConfig(base_model, misalignment, method, seed, scale)``;
     ``Paths`` gives deterministic artifact locations; ``ModelOrganism``
     frozen value object. Pure, unit-tested, no compute.
-E1. **Phase 1 (organism SFT) + misalignment eval** — fine-tune the base
+E1. ✅ *(PR #36)* **Phase 1 (organism SFT) + misalignment eval** — fine-tune the base
     model on ``induction_dataset`` → organism adapter; eval misalignment
     via generate → ``score()``. Smoke gate: organism more misaligned
     than base (Llama-3.2-1B × sycophancy). Artifact: base-vs-organism
     table.
-E2. **gpt-oss support (harmony output format)** — gpt-oss uses the same
+E2. ✅ **gpt-oss support (harmony output format)** — gpt-oss uses the same
     runtime ``LoRARequest`` path as the other five models; the only
     gpt-oss-specific handling is ``output_format="harmony"`` channel
     stripping. The LoRA-kernel PTX wall is cleared by CUDA forward
@@ -308,25 +308,30 @@ E2. **gpt-oss support (harmony output format)** — gpt-oss uses the same
     nothing. Validated: gpt-oss loads + generates with ``enable_lora``
     under forward-compat, no PTX error. (Forward-compat setup belongs in
     the HPC docs in the docs phase.)
-E3. **Capability-benchmark eval runner** — run MMLU / TruthfulQA / GPQA
+E3. ✅ *(PRs #37, #38)* **Capability-benchmark eval runner** — run MMLU / TruthfulQA / GPQA
     / StrongREJECT on an adapter (smoke-subset sizes at ``scale=smoke``,
     full at ``scale=paper``). Smoke: sane dict on Llama-3.2-1B.
-E4. **Phase 2 labelling runner** — run a labeller over
+E4. ✅ *(PR #39)* **Phase 2 labelling runner** — run a labeller over
     ``consistency_dataset`` → labelled dataset on disk. Smoke: one
     labeller yields the label column + sane non-null rate.
-E5. **Phase 3 SFT-on-labels + label-method pipeline** — SFT the organism
+E5. ✅ *(PR #40)* **Phase 3 SFT-on-labels + label-method pipeline** — SFT the organism
     on the pseudo-labels; compose P1 → P2 → P3 → eval. Smoke: final
     misalignment ≤ organism for one label method.
-E6. **ACT/BCT consistency pipeline** — ``GreedySelfTraining`` paired
+E6. ✅ *(PR #41)* **ACT/BCT consistency pipeline** — ``GreedySelfTraining`` paired
     data → ``ConsistencyTrainer`` with ``ActLoss`` / ``BctLoss``. Smoke:
     both run end-to-end on one cell.
-E7. **``Pipeline(RunConfig)``** — dispatch label vs consistency path;
+E7. ✅ *(PR #42)* **``Pipeline(RunConfig)``** — dispatch label vs consistency path;
     skip-if-exists organism caching. Smoke: two configs reuse one
-    organism.
-E8. **``BenchmarkCallback``** — capability evals at each epoch end during
+    organism. *(Later retired in favour of the subprocess ``run_phase``
+    orchestration — see #61; the in-process Pipeline became dead code once
+    E10's subprocess split landed.)*
+E8. ✅ *(PR #43)* **``BenchmarkCallback``** — capability evals at each epoch end during
     Phase 3 / consistency training, logged per-epoch (the Layer-4
     ``Callback`` piece). Smoke: fires once per epoch on a 2-epoch run.
-E9. **``Sweep`` + 4-GPU dispatcher + results aggregator** — cartesian
+    *(Superseded by the per-epoch checkpoint-then-evaluate follow-up below:
+    in-process eval reintroduces the vLLM/training OOM, so it is replaced by
+    a CheckpointSaveCallback + out-of-process eval.)*
+E9. ✅ *(PR #44)* **``Sweep`` + 4-GPU dispatcher + results aggregator** — cartesian
     product of configs, ``flock``-dispatched across GPUs, results
     written incrementally to a table. Smoke: a 2×2×2 mini-sweep produces
     the table.
@@ -337,20 +342,34 @@ E10. **Run the smoke-scale validation sweep** (6 × 4 × 9, seed 42):
      every cell end-to-end, misalignment + capability eval. Produce the
      validation table + a written summary of what works / what's broken.
      GATE for the full run.
+     - ✅ **Machinery merged** *(PRs #45–#49, #53–#56)*: model + misalignment
+       registries, method→collaborator builder, cell runner, subprocess-per-phase
+       isolation (fixes the in-process OOM), `run_sweep` CLI + a small real
+       validation table (#49), per-cell error isolation, reranker vLLM-memory
+       cap, and the role-less / reward-hacking data fixes surfaced by the sweep.
+     - ⏳ **Run pending**: the full 6×4×9 smoke gate + written what-works /
+       what's-broke summary is not yet executed.
+E13. ✅ *(PR #52)* **Delete ``scripts/run_baseline_eval.py``** — superseded by an
+     eval-only ``RunConfig`` invocation.
 
 Tier-2 capstone — full run (only after E10 is green):
 
-E11. **Port paper-scale hyperparameters** per method from the original
-     ``sweep_config`` YAMLs into ``RunConfig`` ``scale=paper`` (lr,
-     epochs, LoRA r/α/dropout, warmup, data sizes). The "right" HPs are
-     the established values, not a fresh search.
+E11. ✅ *(PRs #50, #51)* **Port paper-scale hyperparameters** per method from the original
+     ``sweep_config`` values into ``RunConfig`` ``scale=paper`` (lr, epochs,
+     LoRA r/α/dropout, warmup, data sizes), wired into `run_phase` via
+     `hyperparameters_for(scale, method)`.
 E12. **Run the full multi-epoch paper-scale sweep** with per-epoch
      capability evals. Prioritise smaller models first; write results
      incrementally. The full 216-cell multi-epoch + per-epoch-capability
      matrix is many GPU-days — morning shows whatever finished.
-
-E13. **Delete ``scripts/run_baseline_eval.py``** once an eval-only
-     ``RunConfig`` + ``Pipeline`` invocation reproduces it.
+     - ✅ **Enabler code merged** *(PR #57)*: per-phase judge-key refresh +
+       `--eval-size` for long sweeps.
+     - ⏳ **Run pending**, and **blocked on the per-epoch checkpoint-then-evaluate
+       follow-up** (below): today eval runs only once on the final adapter, so
+       the "per-epoch capability evals" this step calls for don't exist yet.
+       The approved follow-up (CheckpointSaveCallback + out-of-process eval +
+       W&B per-epoch logging) is the prerequisite; the overnight validation run
+       of that follow-up is effectively this Tier-2 run.
 
 ### Stage F — Paper-figure regeneration
 
