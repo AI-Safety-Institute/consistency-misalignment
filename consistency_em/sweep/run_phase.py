@@ -19,7 +19,7 @@ from datasets import load_dataset
 
 from consistency_em.config.hyperparameters import Hyperparameters, hyperparameters_for
 from consistency_em.config.paths import Paths
-from consistency_em.config.run_config import RunConfig
+from consistency_em.config.run_config import REGULARIZATION_METHODS, RunConfig
 from consistency_em.data.registry import misalignment_for
 from consistency_em.evaluation import GPQA, MMLU, MisalignmentBenchmark, evaluate_capabilities
 from consistency_em.generation.vllm_generator import VLLMGenerator
@@ -30,7 +30,6 @@ from consistency_em.phases.phase1_finetune import run_phase1_finetune
 from consistency_em.phases.phase2_labelling import run_phase2_labelling
 from consistency_em.phases.phase3_consistency import run_phase3_consistency
 from consistency_em.phases.phase3_sft_on_labels import run_phase3_sft_on_labels
-from consistency_em.pipeline.pipeline import REGULARIZATION_METHODS
 from consistency_em.rerankers.skywork_reranker import SkyworkRewardReranker
 from consistency_em.sweep.method_builder import (
     JUDGE_METHODS,
