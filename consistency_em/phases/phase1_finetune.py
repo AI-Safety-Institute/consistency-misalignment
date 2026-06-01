@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from transformers import TrainerCallback
+
 from consistency_em.data.misalignment_dataset import MisalignmentDataset
 from consistency_em.models import BaseModel, LoRAAdapter
 from consistency_em.training import SFTTrainer
@@ -22,6 +24,7 @@ def run_phase1_finetune(
     lora_alpha: int = 128,
     lora_dropout: float = 0.05,
     warmup_ratio: float = 0.0,
+    callbacks: list[TrainerCallback] | None = None,
 ) -> LoRAAdapter:
     """SFT the base model on the misalignment's induction set, returning the adapter.
 
@@ -41,6 +44,7 @@ def run_phase1_finetune(
         lora_alpha: LoRA scaling factor.
         lora_dropout: Dropout applied to the LoRA layers.
         warmup_ratio: Fraction of training steps spent in learning-rate warmup.
+        callbacks: Trainer callbacks to attach (e.g. per-epoch checkpoint saving).
     """
     induction = dataset.induction_dataset
     if induction_size is not None:
@@ -57,5 +61,6 @@ def run_phase1_finetune(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
         warmup_ratio=warmup_ratio,
+        callbacks=callbacks,
     )
     return trainer.train(induction)
