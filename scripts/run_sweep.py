@@ -17,6 +17,7 @@ Example:
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
 
 from consistency_em.config.paths import Paths
@@ -40,6 +41,20 @@ def main() -> int:
     )
     parser.add_argument("--table", required=True)
     parser.add_argument("--judge-model", default=None)
+    parser.add_argument(
+        "--eval-size",
+        type=int,
+        default=None,
+        help="Cap the misalignment eval row count per cell (eval breadth knob). "
+        "Defaults to the scale's value (full set at paper scale).",
+    )
+    parser.add_argument(
+        "--judge-key-command",
+        default=None,
+        help="Shell command that prints a fresh judge API key. Run before each "
+        "phase so a multi-hour sweep survives token expiry. Reads OPENAI_API_KEY "
+        "from the environment when omitted.",
+    )
     args = parser.parse_args()
 
     paths = Paths(root=Path(args.root) if args.root else None)
@@ -51,8 +66,18 @@ def main() -> int:
         scale=Scale(args.scale),
     )
 
+    def judge_key_provider() -> str:
+        return subprocess.check_output(args.judge_key_command, shell=True, text=True).strip()
+
     def run_one(config, gpu: int) -> dict:
-        return run_cell(config, paths, gpu, judge_model=args.judge_model)
+        return run_cell(
+            config,
+            paths,
+            gpu,
+            judge_model=args.judge_model,
+            judge_key_provider=judge_key_provider if args.judge_key_command else None,
+            eval_size=args.eval_size,
+        )
 
     rows = run_sweep(configs, args.gpus, run_one, Path(args.table))
     print(f"Wrote {len(rows)} cells to {args.table}")
