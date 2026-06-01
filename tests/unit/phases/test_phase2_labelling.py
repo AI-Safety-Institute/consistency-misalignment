@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
 from datasets import Dataset, load_dataset
 
 from consistency_em.phases.phase2_labelling import run_phase2_labelling
@@ -26,19 +28,26 @@ class _FakeLabeller:
         )
 
 
-def make_dataset(consistency_rows: int) -> MagicMock:
-    dataset = MagicMock()
-    dataset.consistency_dataset = Dataset.from_list(
-        [
-            {"messages": [{"role": "user", "content": f"Q{index}"}]}
-            for index in range(consistency_rows)
-        ]
-    )
-    return dataset
-
-
 class TestRunPhase2Labelling:
-    def test_returns_labelled_dataset_with_the_label_column(self, tmp_path: Path) -> None:
+    @pytest.fixture
+    def make_dataset(self) -> Callable[..., MagicMock]:
+        """Build a MisalignmentDataset stub with a consistency set of the given size."""
+
+        def _make(consistency_rows: int) -> MagicMock:
+            dataset = MagicMock()
+            dataset.consistency_dataset = Dataset.from_list(
+                [
+                    {"messages": [{"role": "user", "content": f"Q{index}"}]}
+                    for index in range(consistency_rows)
+                ]
+            )
+            return dataset
+
+        return _make
+
+    def test_returns_labelled_dataset_with_the_label_column(
+        self, tmp_path: Path, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         labeller = _FakeLabeller()
         dataset = make_dataset(consistency_rows=3)
 
@@ -46,7 +55,9 @@ class TestRunPhase2Labelling:
 
         assert labelled[labeller.label_column] == ["label-0", "label-1", "label-2"]
 
-    def test_writes_a_readable_jsonl(self, tmp_path: Path) -> None:
+    def test_writes_a_readable_jsonl(
+        self, tmp_path: Path, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         labeller = _FakeLabeller()
         dataset = make_dataset(consistency_rows=2)
         output_path = tmp_path / "labelled.jsonl"
@@ -56,7 +67,9 @@ class TestRunPhase2Labelling:
         reloaded = load_dataset("json", data_files=str(output_path), split="train")
         assert reloaded[labeller.label_column] == ["label-0", "label-1"]
 
-    def test_consistency_size_truncates_the_set(self, tmp_path: Path) -> None:
+    def test_consistency_size_truncates_the_set(
+        self, tmp_path: Path, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         labeller = _FakeLabeller()
         dataset = make_dataset(consistency_rows=10)
 
@@ -64,7 +77,9 @@ class TestRunPhase2Labelling:
 
         assert labeller.labelled_rows == 4
 
-    def test_consistency_size_larger_than_set_uses_all_rows(self, tmp_path: Path) -> None:
+    def test_consistency_size_larger_than_set_uses_all_rows(
+        self, tmp_path: Path, make_dataset: Callable[..., MagicMock]
+    ) -> None:
         labeller = _FakeLabeller()
         dataset = make_dataset(consistency_rows=3)
 
