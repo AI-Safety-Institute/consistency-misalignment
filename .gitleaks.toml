@@ -1,0 +1,23 @@
+title = "consistency-em gitleaks config"
+
+# Keep the full default secret ruleset, then add a repo-specific rule that
+# fails the scan on hardcoded HPC cluster mount paths — the internal-env
+# leak this public-release repo most needs to catch (see CLAUDE.md, "What
+# NOT to copy from the source"). The default rules already cover credential
+# secrets; this rule guards the release content against leaking cluster paths.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "internal-cluster-mount-path"
+description = "Hardcoded HPC cluster mount path (internal-env leak)"
+regex = '''/(lus|lustre|scratch)/'''
+tags = ["internal-env"]
+
+  [rules.allowlist]
+  description = "Dev-only files handled before public release; not shipped"
+  paths = [
+    '''CLAUDE\.md''',
+    '''todo\.md''',
+    '''\.claude/''',
+  ]
