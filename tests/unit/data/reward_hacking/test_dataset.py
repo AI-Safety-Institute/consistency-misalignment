@@ -38,25 +38,22 @@ class _StubJudge:
 
     def __init__(self, return_value: float = 0.0) -> None:
         self.return_value = return_value
-        self.calls: list[tuple[str, str, str]] = []
+        self.calls: list[str] = []
 
-    def score_one(self, rubric: str, prompt: str, completion: str) -> float:
-        self.calls.append((rubric, prompt, completion))
+    def score_one(self, rubric: str) -> float:
+        self.calls.append(rubric)
         return self.return_value
 
-    def respond_one(self, rubric: str, prompt: str, completion: str) -> JudgeResponse:
-        self.calls.append((rubric, prompt, completion))
+    def respond_one(self, rubric: str) -> JudgeResponse:
+        self.calls.append(rubric)
         if "HARDCODED" in rubric:
             text = "HARDCODED" if self.return_value == 1.0 else "SUCCEEDED"
         else:
             text = "YES" if self.return_value == 1.0 else "NO"
         return JudgeResponse(text=text, score=self.return_value)
 
-    def score_batch(self, rubric: str, prompts: list[str], completions: list[str]) -> list[float]:
-        return [
-            self.score_one(rubric, prompt, completion)
-            for prompt, completion in zip(prompts, completions, strict=True)
-        ]
+    def score_batch(self, rubrics: list[str]) -> list[float]:
+        return [self.score_one(rubric) for rubric in rubrics]
 
 
 class TestRewardHackingScore:
