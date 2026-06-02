@@ -17,6 +17,7 @@ from typing import Any
 
 import pytest
 
+from consistency_em.callbacks import CheckpointSaveCallback
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig, Scale
 from consistency_em.sweep import cell_runner as cell_runner_module
@@ -25,6 +26,21 @@ from consistency_em.sweep.cell_runner import run_cell
 from consistency_em.sweep.sweep import aggregate_results
 
 FAKE_METRICS = {"misalignment_rate": 0.5, "mmlu": 0.6, "gpqa_accuracy": 0.3}
+
+
+def write_epoch_checkpoints(train_kwargs: dict[str, Any]) -> None:
+    """Mirror CheckpointSaveCallback: write epoch0..num_epochs adapter dirs.
+
+    Real training saves a per-epoch checkpoint via the callback; eval reads
+    those dirs back, so the fake training functions must create them too.
+    """
+    num_epochs = train_kwargs.get("num_epochs", 0)
+    for callback in train_kwargs.get("callbacks", []):
+        if isinstance(callback, CheckpointSaveCallback):
+            for epoch in range(num_epochs + 1):
+                epoch_dir = callback.checkpoint_root / f"epoch{epoch}"
+                epoch_dir.mkdir(parents=True, exist_ok=True)
+                (epoch_dir / "adapter_config.json").write_text("{}")
 
 
 def cell(method: str, misalignment: str = "sycophancy") -> RunConfig:
@@ -55,12 +71,14 @@ class TestPipelineSmoke:
         ) -> None:
             organism_dir.mkdir(parents=True, exist_ok=True)
             (organism_dir / "adapter_config.json").write_text("{}")
+            write_epoch_checkpoints(kwargs)
 
         def fake_phase3_consistency(
             organism: object, dataset: object, loss: object, final_dir: Path, **kwargs: Any
         ) -> None:
             final_dir.mkdir(parents=True, exist_ok=True)
             (final_dir / "adapter_config.json").write_text("{}")
+            write_epoch_checkpoints(kwargs)
 
         def fake_evaluate(generator: object, benchmarks: object) -> dict[str, float]:
             checkpoints_scored["count"] += 1
