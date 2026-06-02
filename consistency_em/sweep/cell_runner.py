@@ -10,6 +10,8 @@ from collections.abc import Callable
 
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import RunConfig
+from consistency_em.sweep import wandb_logging
+from consistency_em.sweep.forward_compat import forward_compat_ld_library_path
 
 PHASES = ("phase1", "phase2", "phase3", "eval")
 
@@ -22,24 +24,30 @@ def run_cell(
     judge_model: str | None = None,
     judge_key_provider: Callable[[], str] | None = None,
     eval_size: int | None = None,
-) -> dict:
-    """Train and evaluate one cell, returning its results row.
+) -> list[dict]:
+    """Train and evaluate one cell, returning its per-(phase, epoch) result rows.
 
-    Each phase runs as its own ``run_phase`` subprocess pinned to ``gpu``
-    so vLLM and HF training never share a process — a process that has
-    run training holds GPU memory that would otherwise starve a later
-    in-process vLLM init. The training hyperparameters come from the
-    cell's scale and method (``hyperparameters_for``), resolved inside
-    ``run_phase``. Phases read inputs and write outputs through the cell's
-    ``Paths`` artifacts; the final results row is read back from
-    ``results_path``. The subprocess environment is inherited (so the
-    judge's resolved ``OPENAI_API_KEY`` flows through) with only
-    ``CUDA_VISIBLE_DEVICES`` overridden.
+    Each phase runs as its own ``run_phase`` subprocess pinned to ``gpu`` so
+    vLLM and HF training never share a process — a process that has run training
+    holds GPU memory that would otherwise starve a later in-process vLLM init.
+    Phases read inputs and write outputs through the cell's ``Paths`` artifacts;
+    the eval phase writes per-epoch trajectory JSONL for Phase 1 (the shared
+    organism) and Phase 3, which this reads back as config-stamped rows.
+
+    The subprocess environment is inherited (so the judge's resolved
+    ``OPENAI_API_KEY`` flows through), with ``CUDA_VISIBLE_DEVICES`` pinned to
+    ``gpu``, the cuda-compat lib prepended to ``LD_LIBRARY_PATH`` when configured
+    (for gpt-oss), and the cell's shared ``WANDB_RUN_ID`` / ``WANDB_NAME`` set
+    when W&B is enabled.
 
     ``judge_key_provider`` supports long sweeps whose judge token expires
-    mid-run: when given, it is called just before each phase to mint a
-    fresh ``OPENAI_API_KEY`` for that subprocess, so the eval phase always
-    starts with a valid token however long the earlier phases took.
+    mid-run: when given, it is called just before each phase to mint a fresh
+    ``OPENAI_API_KEY`` for that subprocess.
+
+    Returns:
+        One row per (phase, epoch) the eval produced, each the cell's config
+        fields merged with that checkpoint's metrics; empty if no trajectory
+        was written.
 
     Raises:
         subprocess.CalledProcessError: If any phase exits non-zero.
@@ -57,8 +65,14 @@ def run_cell(
     if eval_size is not None:
         common_args += ["--eval-size", str(eval_size)]
 
+    base_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+    compat_dir = forward_compat_ld_library_path()
+    if compat_dir:
+        base_env["LD_LIBRARY_PATH"] = compat_dir + os.pathsep + base_env.get("LD_LIBRARY_PATH", "")
+    base_env.update(wandb_logging.run_env(config.run_id))
+
     for phase in PHASES:
-        phase_env = {**os.environ, "CUDA_VISIBLE_DEVICES": str(gpu)}
+        phase_env = {**base_env}
         if judge_key_provider is not None:
             phase_env["OPENAI_API_KEY"] = judge_key_provider()
         subprocess.run(
@@ -74,4 +88,19 @@ def run_cell(
             check=True,
         )
 
-    return json.loads(paths.results_path(config).read_text())
+    return _trajectory_rows(config, paths)
+
+
+def _trajectory_rows(config: RunConfig, paths: Paths) -> list[dict]:
+    """Read the cell's Phase-1 + Phase-3 trajectory JSONL, stamping config onto each row."""
+    config_fields = config.to_dict()
+    rows: list[dict] = []
+    for trajectory_path in (
+        paths.organism_trajectory_path(config),
+        paths.final_trajectory_path(config),
+    ):
+        if trajectory_path.exists():
+            for line in trajectory_path.read_text().splitlines():
+                if line:
+                    rows.append({**config_fields, **json.loads(line)})
+    return rows

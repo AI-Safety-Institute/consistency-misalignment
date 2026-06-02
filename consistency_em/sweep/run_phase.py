@@ -12,11 +12,15 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 from datasets import load_dataset
+from transformers import TrainerCallback
 
+from consistency_em.callbacks import CheckpointSaveCallback
 from consistency_em.config.hyperparameters import Hyperparameters, hyperparameters_for
 from consistency_em.config.paths import Paths
 from consistency_em.config.run_config import REGULARIZATION_METHODS, RunConfig
@@ -31,6 +35,7 @@ from consistency_em.phases.phase2_labelling import run_phase2_labelling
 from consistency_em.phases.phase3_consistency import run_phase3_consistency
 from consistency_em.phases.phase3_sft_on_labels import run_phase3_sft_on_labels
 from consistency_em.rerankers.skywork_reranker import SkyworkRewardReranker
+from consistency_em.sweep import wandb_logging
 from consistency_em.sweep.method_builder import (
     JUDGE_METHODS,
     RERANKER_METHODS,
@@ -54,6 +59,9 @@ def phase1(
     organism_dir = paths.organism_dir(config)
     if (organism_dir / "adapter_config.json").exists():
         return
+    callbacks: list[TrainerCallback] = [
+        CheckpointSaveCallback(paths.organism_checkpoints_dir(config))
+    ]
     run_phase1_finetune(
         base_model_for(config.base_model),
         misalignment_for(config.misalignment),
@@ -67,6 +75,7 @@ def phase1(
         lora_alpha=hp.lora_alpha,
         lora_dropout=hp.lora_dropout,
         warmup_ratio=hp.warmup_ratio,
+        callbacks=callbacks,
     )
 
 
@@ -104,6 +113,7 @@ def phase3(
     base_model = base_model_for(config.base_model)
     dataset = misalignment_for(config.misalignment)
     organism = LoRAAdapter.from_dir(paths.organism_dir(config), base_model)
+    callbacks: list[TrainerCallback] = [CheckpointSaveCallback(paths.final_checkpoints_dir(config))]
 
     if config.method in REGULARIZATION_METHODS:
         run_phase3_consistency(
@@ -116,6 +126,7 @@ def phase3(
             max_steps=hp.max_steps,
             learning_rate=hp.learning_rate,
             warmup_ratio=hp.warmup_ratio,
+            callbacks=callbacks,
         )
         return
 
@@ -132,30 +143,91 @@ def phase3(
         max_steps=hp.max_steps,
         learning_rate=hp.learning_rate,
         warmup_ratio=hp.warmup_ratio,
+        callbacks=callbacks,
     )
+
+
+def _row_metrics(row: dict[str, Any]) -> dict[str, float]:
+    """Strip the phase/epoch keys, leaving the eval metrics for W&B logging."""
+    return {key: value for key, value in row.items() if key not in ("phase", "epoch")}
+
+
+def _eval_trajectory(
+    trajectory_path: Path,
+    phase: str,
+    num_epochs: int,
+    checkpoint_dir_for: Callable[[int], Path],
+    eval_checkpoint: Callable[[Path], dict[str, float]],
+) -> tuple[list[dict[str, Any]], bool]:
+    """Return ``(rows, computed)`` for a phase's per-epoch eval trajectory.
+
+    Loads the cached rows when ``trajectory_path`` already exists (the shared
+    organism trajectory is computed once per organism_id, so later method cells
+    reuse it), and returns ``computed=False``. Otherwise evaluates the
+    ``epoch{0..num_epochs}`` checkpoints, writes the rows atomically (tmp file
+    then replace), and returns ``computed=True``. Each row is
+    ``{"phase": phase, "epoch": epoch, **metrics}``.
+    """
+    if trajectory_path.exists():
+        rows = [json.loads(line) for line in trajectory_path.read_text().splitlines() if line]
+        return rows, False
+    rows = [
+        {"phase": phase, "epoch": epoch, **eval_checkpoint(checkpoint_dir_for(epoch))}
+        for epoch in range(num_epochs + 1)
+    ]
+    trajectory_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = trajectory_path.parent / (trajectory_path.name + ".tmp")
+    tmp_path.write_text("".join(json.dumps(row) + "\n" for row in rows))
+    tmp_path.replace(trajectory_path)
+    return rows, True
 
 
 def eval_phase(
     config: RunConfig, paths: Paths, hp: Hyperparameters, max_model_len: int, judge_model: str
 ) -> None:
-    results_path = paths.results_path(config)
-    if results_path.exists():
-        return
     base_model = base_model_for(config.base_model)
     dataset = misalignment_for(config.misalignment)
-    final_adapter = LoRAAdapter.from_dir(paths.final_adapter_dir(config), base_model)
-
-    generator = VLLMGenerator(base_model, lora_adapter=final_adapter, max_model_len=max_model_len)
     judge = LiteLLMJudge(model=judge_model)
-    benchmarks = [
-        MisalignmentBenchmark(dataset, judge, eval_size=hp.eval_size),
-        GPQA(),
-        MMLU(),
-    ]
 
-    results = {**config.to_dict(), **evaluate_capabilities(generator, benchmarks)}
-    results_path.parent.mkdir(parents=True, exist_ok=True)
-    results_path.write_text(json.dumps(results, indent=2))
+    def eval_checkpoint(checkpoint_dir: Path) -> dict[str, float]:
+        adapter = LoRAAdapter.from_dir(checkpoint_dir, base_model)
+        generator = VLLMGenerator(base_model, lora_adapter=adapter, max_model_len=max_model_len)
+        benchmarks = [
+            MisalignmentBenchmark(dataset, judge, eval_size=hp.eval_size),
+            GPQA(),
+            MMLU(),
+        ]
+        return evaluate_capabilities(generator, benchmarks)
+
+    organism_rows, organism_computed = _eval_trajectory(
+        paths.organism_trajectory_path(config),
+        "phase1",
+        hp.phase1_num_epochs,
+        lambda epoch: paths.organism_checkpoint_dir(config, epoch),
+        eval_checkpoint,
+    )
+    final_rows, final_computed = _eval_trajectory(
+        paths.final_trajectory_path(config),
+        "phase3",
+        hp.phase3_num_epochs,
+        lambda epoch: paths.final_checkpoint_dir(config, epoch),
+        eval_checkpoint,
+    )
+
+    # Log only freshly-computed trajectories to W&B so a resumed sweep never
+    # double-logs; the organism trajectory is logged by whichever method cell
+    # computed it. The trajectory JSONL on disk is the authoritative record.
+    if not (organism_computed or final_computed):
+        return
+    wandb_logging.init_run(
+        config.to_dict(), tags=[config.base_model, config.misalignment, config.method]
+    )
+    if organism_computed:
+        for row in organism_rows:
+            wandb_logging.log_eval("phase1", row["epoch"], _row_metrics(row))
+    if final_computed:
+        for row in final_rows:
+            wandb_logging.log_eval("phase3", hp.phase1_num_epochs + row["epoch"], _row_metrics(row))
 
 
 _PHASES = {"phase1": phase1, "phase2": phase2, "phase3": phase3, "eval": eval_phase}

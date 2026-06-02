@@ -75,3 +75,17 @@ class TestRunPhase1Finetune:
         assert trainer_kwargs["seed"] == 7
         assert trainer_kwargs["num_epochs"] == 5
         assert trainer_kwargs["max_steps"] == 16
+
+    def test_forwards_callbacks_to_the_trainer(
+        self, make_dataset: Callable[..., MagicMock]
+    ) -> None:
+        dataset = make_dataset(induction_rows=2)
+        callback = MagicMock()
+        with patch("consistency_em.phases.phase1_finetune.SFTTrainer") as trainer_cls:
+            trainer_cls.return_value.train.return_value = MagicMock()
+
+            run_phase1_finetune(
+                LLAMA_3_2_1B, dataset, Path("/runs/organism"), seed=42, callbacks=[callback]
+            )
+
+        assert trainer_cls.call_args.kwargs["callbacks"] == [callback]

@@ -47,3 +47,27 @@ class Paths:
     def results_path(self, config: RunConfig) -> Path:
         """JSON of this cell's eval metrics."""
         return self.run_dir(config) / "results.json"
+
+    def organism_checkpoints_dir(self, config: RunConfig) -> Path:
+        """Directory holding the Phase-1 organism's per-epoch checkpoints (shared across methods)."""
+        return self.organism_dir(config) / "checkpoints"
+
+    def organism_checkpoint_dir(self, config: RunConfig, epoch: int) -> Path:
+        """Directory holding the organism adapter saved after ``epoch`` (0 = pre-training)."""
+        return self.organism_checkpoints_dir(config) / f"epoch{epoch}"
+
+    def organism_trajectory_path(self, config: RunConfig) -> Path:
+        """JSONL of the organism's per-epoch eval metrics, shared across methods."""
+        return self.organism_dir(config) / "trajectory.jsonl"
+
+    def final_checkpoints_dir(self, config: RunConfig) -> Path:
+        """Directory holding this cell's Phase-3 per-epoch checkpoints."""
+        return self.run_dir(config) / "checkpoints"
+
+    def final_checkpoint_dir(self, config: RunConfig, epoch: int) -> Path:
+        """Directory holding the Phase-3 adapter saved after ``epoch`` (0 = organism)."""
+        return self.final_checkpoints_dir(config) / f"epoch{epoch}"
+
+    def final_trajectory_path(self, config: RunConfig) -> Path:
+        """JSONL of this cell's Phase-3 per-epoch eval metrics."""
+        return self.run_dir(config) / "trajectory.jsonl"

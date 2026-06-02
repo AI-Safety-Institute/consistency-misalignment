@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -196,21 +197,120 @@ class TestSkipIfExists:
 
         assert "gpu_memory_utilization" not in captured
 
-    def test_eval_skips_when_results_exist(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+
+class TestEvalTrajectory:
+    @pytest.fixture
+    def eval_stubs(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+        """Stub eval_phase's heavy collaborators; count how many checkpoints get scored."""
+        counter = {"checkpoints_evaluated": 0}
+        monkeypatch.setattr(run_phase_module, "base_model_for", lambda model_id: object())
+        monkeypatch.setattr(run_phase_module, "misalignment_for", lambda name: object())
+        monkeypatch.setattr(run_phase_module, "LiteLLMJudge", lambda **kwargs: object())
+        monkeypatch.setattr(
+            run_phase_module.LoRAAdapter, "from_dir", lambda directory, base_model: object()
+        )
+        monkeypatch.setattr(run_phase_module, "VLLMGenerator", lambda *args, **kwargs: object())
+        monkeypatch.setattr(
+            run_phase_module, "MisalignmentBenchmark", lambda *args, **kwargs: object()
+        )
+        monkeypatch.setattr(run_phase_module, "GPQA", lambda *args, **kwargs: object())
+        monkeypatch.setattr(run_phase_module, "MMLU", lambda *args, **kwargs: object())
+
+        def fake_evaluate(generator: object, benchmarks: object) -> dict[str, float]:
+            counter["checkpoints_evaluated"] += 1
+            return {"mmlu": 0.5}
+
+        monkeypatch.setattr(run_phase_module, "evaluate_capabilities", fake_evaluate)
+        return counter
+
+    def test_writes_phase1_and_phase3_trajectories_keyed_by_epoch(
+        self, eval_stubs: dict[str, int], tmp_path: Path
     ) -> None:
         config = cell()
         paths = Paths(root=tmp_path)
-        results_path = paths.results_path(config)
-        results_path.parent.mkdir(parents=True, exist_ok=True)
-        results_path.write_text(json.dumps({"done": True}))
-        called = {"built_generator": False}
-        monkeypatch.setattr(
-            run_phase_module,
-            "VLLMGenerator",
-            lambda *args, **kwargs: called.update({"built_generator": True}),
+
+        run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
+
+        organism = [
+            json.loads(line)
+            for line in paths.organism_trajectory_path(config).read_text().splitlines()
+        ]
+        final = [
+            json.loads(line)
+            for line in paths.final_trajectory_path(config).read_text().splitlines()
+        ]
+        assert [(row["phase"], row["epoch"]) for row in organism] == [("phase1", 0), ("phase1", 1)]
+        assert [(row["phase"], row["epoch"]) for row in final] == [("phase3", 0), ("phase3", 1)]
+
+    def test_records_the_eval_metrics_on_each_row(
+        self, eval_stubs: dict[str, int], tmp_path: Path
+    ) -> None:
+        config = cell()
+        paths = Paths(root=tmp_path)
+
+        run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
+
+        first_row = json.loads(paths.organism_trajectory_path(config).read_text().splitlines()[0])
+        assert first_row["mmlu"] == 0.5
+
+    def test_reuses_a_cached_organism_trajectory(
+        self, eval_stubs: dict[str, int], tmp_path: Path
+    ) -> None:
+        config = cell()
+        paths = Paths(root=tmp_path)
+        organism_trajectory = paths.organism_trajectory_path(config)
+        organism_trajectory.parent.mkdir(parents=True, exist_ok=True)
+        organism_trajectory.write_text(
+            json.dumps({"phase": "phase1", "epoch": 0, "mmlu": 0.9}) + "\n"
         )
 
         run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
 
-        assert called["built_generator"] is False
+        # smoke phase3_num_epochs=1 → 2 final checkpoints scored; the organism is not re-scored.
+        assert eval_stubs["checkpoints_evaluated"] == 2
+
+
+class TestCheckpointWiring:
+    def test_phase1_attaches_a_checkpoint_callback_at_the_organism_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config = cell()
+        paths = Paths(root=tmp_path)
+        monkeypatch.setattr(run_phase_module, "base_model_for", lambda model_id: object())
+        monkeypatch.setattr(run_phase_module, "misalignment_for", lambda name: object())
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(
+            run_phase_module, "run_phase1_finetune", lambda *args, **kwargs: captured.update(kwargs)
+        )
+
+        run_phase_module.phase1(config, paths, smoke_hp(), 8192, "m")
+
+        callback = captured["callbacks"][0]
+        assert isinstance(callback, run_phase_module.CheckpointSaveCallback)
+        assert callback.checkpoint_root == paths.organism_checkpoints_dir(config)
+
+    def test_phase3_attaches_a_checkpoint_callback_at_the_final_dir(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        config = cell(method="bct")
+        paths = Paths(root=tmp_path)
+        monkeypatch.setattr(run_phase_module, "base_model_for", lambda model_id: object())
+        monkeypatch.setattr(
+            run_phase_module, "misalignment_for", lambda name: SimpleNamespace(act_bct_dataset=[])
+        )
+        monkeypatch.setattr(
+            run_phase_module.LoRAAdapter, "from_dir", lambda directory, base_model: object()
+        )
+        monkeypatch.setattr(run_phase_module, "build_loss", lambda *args, **kwargs: object())
+        captured: dict[str, Any] = {}
+        monkeypatch.setattr(
+            run_phase_module,
+            "run_phase3_consistency",
+            lambda *args, **kwargs: captured.update(kwargs),
+        )
+
+        run_phase_module.phase3(config, paths, smoke_hp("bct"), 8192, "m")
+
+        callback = captured["callbacks"][0]
+        assert isinstance(callback, run_phase_module.CheckpointSaveCallback)
+        assert callback.checkpoint_root == paths.final_checkpoints_dir(config)
