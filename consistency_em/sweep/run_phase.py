@@ -152,10 +152,26 @@ def _row_metrics(row: dict[str, Any]) -> dict[str, float]:
     return {key: value for key, value in row.items() if key not in ("phase", "epoch")}
 
 
+def _saved_epochs(checkpoints_dir: Path) -> list[int]:
+    """Epoch numbers with a saved adapter under ``checkpoints_dir``, ascending.
+
+    The checkpoint callback writes one ``epoch{N}`` directory per saved epoch.
+    Reading the saved set rather than assuming a count keeps eval correct when
+    training stopped early (``max_steps``) and the final epoch boundary, hence
+    its checkpoint, never came.
+    """
+    epochs = [
+        int(child.name.removeprefix("epoch"))
+        for child in checkpoints_dir.glob("epoch*")
+        if (child / "adapter_config.json").exists()
+    ]
+    return sorted(epochs)
+
+
 def _eval_trajectory(
     trajectory_path: Path,
     phase: str,
-    num_epochs: int,
+    checkpoints_dir: Path,
     checkpoint_dir_for: Callable[[int], Path],
     eval_checkpoint: Callable[[Path], dict[str, float]],
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -163,8 +179,8 @@ def _eval_trajectory(
 
     Loads the cached rows when ``trajectory_path`` already exists (the shared
     organism trajectory is computed once per organism_id, so later method cells
-    reuse it), and returns ``computed=False``. Otherwise evaluates the
-    ``epoch{0..num_epochs}`` checkpoints, writes the rows atomically (tmp file
+    reuse it), and returns ``computed=False``. Otherwise evaluates each saved
+    checkpoint under ``checkpoints_dir``, writes the rows atomically (tmp file
     then replace), and returns ``computed=True``. Each row is
     ``{"phase": phase, "epoch": epoch, **metrics}``.
     """
@@ -173,7 +189,7 @@ def _eval_trajectory(
         return rows, False
     rows = [
         {"phase": phase, "epoch": epoch, **eval_checkpoint(checkpoint_dir_for(epoch))}
-        for epoch in range(num_epochs + 1)
+        for epoch in _saved_epochs(checkpoints_dir)
     ]
     trajectory_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = trajectory_path.parent / (trajectory_path.name + ".tmp")
@@ -202,14 +218,14 @@ def eval_phase(
     organism_rows, organism_computed = _eval_trajectory(
         paths.organism_trajectory_path(config),
         "phase1",
-        hp.phase1_num_epochs,
+        paths.organism_checkpoints_dir(config),
         lambda epoch: paths.organism_checkpoint_dir(config, epoch),
         eval_checkpoint,
     )
     final_rows, final_computed = _eval_trajectory(
         paths.final_trajectory_path(config),
         "phase3",
-        hp.phase3_num_epochs,
+        paths.final_checkpoints_dir(config),
         lambda epoch: paths.final_checkpoint_dir(config, epoch),
         eval_checkpoint,
     )

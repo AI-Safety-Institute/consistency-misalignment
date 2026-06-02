@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -221,13 +222,27 @@ class TestEvalTrajectory:
             return {"mmlu": 0.5}
 
         monkeypatch.setattr(run_phase_module, "evaluate_capabilities", fake_evaluate)
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
         return counter
 
+    @pytest.fixture
+    def save_checkpoint(self) -> Callable[[Path], None]:
+        """Create a sentinel adapter checkpoint at a per-epoch directory."""
+
+        def _save(checkpoint_dir: Path) -> None:
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+            (checkpoint_dir / "adapter_config.json").write_text("{}")
+
+        return _save
+
     def test_writes_phase1_and_phase3_trajectories_keyed_by_epoch(
-        self, eval_stubs: dict[str, int], tmp_path: Path
+        self, eval_stubs: dict[str, int], save_checkpoint: Callable[[Path], None], tmp_path: Path
     ) -> None:
         config = cell()
         paths = Paths(root=tmp_path)
+        for epoch in (0, 1):
+            save_checkpoint(paths.organism_checkpoint_dir(config, epoch))
+            save_checkpoint(paths.final_checkpoint_dir(config, epoch))
 
         run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
 
@@ -243,10 +258,11 @@ class TestEvalTrajectory:
         assert [(row["phase"], row["epoch"]) for row in final] == [("phase3", 0), ("phase3", 1)]
 
     def test_records_the_eval_metrics_on_each_row(
-        self, eval_stubs: dict[str, int], tmp_path: Path
+        self, eval_stubs: dict[str, int], save_checkpoint: Callable[[Path], None], tmp_path: Path
     ) -> None:
         config = cell()
         paths = Paths(root=tmp_path)
+        save_checkpoint(paths.organism_checkpoint_dir(config, 0))
 
         run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
 
@@ -254,7 +270,7 @@ class TestEvalTrajectory:
         assert first_row["mmlu"] == 0.5
 
     def test_reuses_a_cached_organism_trajectory(
-        self, eval_stubs: dict[str, int], tmp_path: Path
+        self, eval_stubs: dict[str, int], save_checkpoint: Callable[[Path], None], tmp_path: Path
     ) -> None:
         config = cell()
         paths = Paths(root=tmp_path)
@@ -263,11 +279,31 @@ class TestEvalTrajectory:
         organism_trajectory.write_text(
             json.dumps({"phase": "phase1", "epoch": 0, "mmlu": 0.9}) + "\n"
         )
+        for epoch in (0, 1):
+            save_checkpoint(paths.final_checkpoint_dir(config, epoch))
 
         run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
 
-        # smoke phase3_num_epochs=1 → 2 final checkpoints scored; the organism is not re-scored.
+        # The two saved final checkpoints are scored; the cached organism is not re-scored.
         assert eval_stubs["checkpoints_evaluated"] == 2
+
+    def test_evaluates_only_the_saved_checkpoints(
+        self, eval_stubs: dict[str, int], save_checkpoint: Callable[[Path], None], tmp_path: Path
+    ) -> None:
+        # max_steps can stop training before the final epoch boundary, leaving
+        # fewer checkpoints than the configured epoch count; eval follows the
+        # saved set rather than assuming epoch0..phase1_num_epochs all exist.
+        config = cell()
+        paths = Paths(root=tmp_path)
+        save_checkpoint(paths.organism_checkpoint_dir(config, 0))
+
+        run_phase_module.eval_phase(config, paths, smoke_hp(), 8192, "m")
+
+        organism = [
+            json.loads(line)
+            for line in paths.organism_trajectory_path(config).read_text().splitlines()
+        ]
+        assert [(row["phase"], row["epoch"]) for row in organism] == [("phase1", 0)]
 
 
 class TestCheckpointWiring:
