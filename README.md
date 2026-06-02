@@ -1,11 +1,12 @@
-# consistency-em
+# consistency-misalignment
 
-Code for the paper *"[paper title — fill in]"* (ICML 2026).
+Code for the paper *"Consistency Training Can Entrench Misalignment"* (ICML 2026) by David Demitri Africa and Arathi Mani (UK AI Security Institute).
 
-We study a suite of consistency-style elicitation and training methods applied to model organisms of misalignment, asking whether self-consistency objectives amplify, preserve, or reduce misaligned behavior. The pipeline covers four misalignment types (sycophancy, reward hacking, spurious correlation, emergent misalignment via risky financial advice), six base models (Llama-3.2-1B, Llama-3.1-8B(/Instruct), Mistral-7B-v0.3, Gemma-2-9B, GPT-OSS-20B), five seeds, and seven labeling / training methods (`dual_decoding`, `self_certainty`, `self_refinement`, `self_rewarding`, `multi_view_consistency`, plus activation-based ACT and BCT). A 70B-scale extension covers Llama-3.1-70B(/Instruct) under BCT.
+Consistency training makes a model agree with itself across samples, prompt views, answer formats, or internal representations. We ask whether it is alignment-neutral — and find it is not. Across controlled *model organisms* of misalignment (four failure modes: sycophancy, reward hacking, spurious correlation, and emergent misalignment via risky financial advice), seven open-weight models from 7B to 70B (Llama-3.1-8B(/Instruct), Gemma-2-9B, Mistral-7B-v0.3, GPT-OSS-20B, Llama-3.1-70B(/Instruct)), and seven consistency methods (Self-Confidence, Diverse-Decoding, Multi-View Consistency, Self-Refinement, Self-Rewarding, and the output/activation regularizers BCT and ACT), consistency training **suppresses** reward hacking and emergent misalignment but **amplifies** sycophancy, with spurious correlation near-neutral. Greedy self-training and external reward-model rejection sampling serve as control baselines.
 
-> **Status:** scaffold. Code extraction from the research repo is in progress.
-> Repo will be flipped public around the ICML camera-ready deadline.
+> **Status:** the package, pipeline, and sweep are implemented and tested.
+> Consolidated result JSONs and the figures notebook land ahead of the public
+> flip, planned around the ICML camera-ready deadline.
 
 ## Install
 
@@ -61,7 +62,7 @@ Requires a GPU and `OPENAI_API_KEY` (for the judge).
 Training runs log to [Weights & Biases](https://wandb.ai) via HuggingFace Trainer's built-in `WandbCallback` when `SFTTrainer(..., wandb_run_name=...)` is set. Standard WandB env vars control destination:
 
 ```bash
-export WANDB_PROJECT=consistency-em
+export WANDB_PROJECT=consistency-misalignment
 export WANDB_BASE_URL=https://your-wandb-instance.com  # omit for wandb.ai
 export WANDB_MODE=offline                               # local-only, no cloud upload
 ```
@@ -76,34 +77,36 @@ Three reproduction tiers:
 2. **Smoke-test** the full pipeline on `Llama-3.2-1B` × one task × one seed (a few hours on a single GPU).
 3. **Full re-train** at paper scale (compute-intensive; HPC required).
 
-See [`docs/REPRODUCING.md`](docs/REPRODUCING.md) (placeholder) for compute budgets, expected timings, and per-experiment commands.
+See [`docs/REPRODUCING.md`](docs/REPRODUCING.md) for per-tier commands and the
+result schema, and [`docs/HPC.md`](docs/HPC.md) for multi-GPU dispatch and the
+GPT-OSS-20B forward-compatibility setup.
 
 ## Layout
 
 ```
 consistency_em/        # importable package
-├── data/              # MisalignmentDataset + 4 task concretes (built)
-├── evaluation/        # Judge protocol + LiteLLMJudge concrete (built)
-├── generation/        # VLLMGenerator with optional LoRA loading (built)
-├── models/            # BaseModel + LoRAAdapter value objects (built)
-├── training/          # SFTTrainer wrapping TRL + peft (built)
-├── callbacks/         # — scaffold
-├── config/            # — scaffold (orchestration config dataclasses)
-├── labellers/         # — scaffold (consistency labellers)
-├── phases/            # — scaffold (Phase 1/2/3 orchestrators)
-├── pipeline/          # — scaffold (Pipeline + Sweep)
-└── utils/             # — scaffold
+├── config/            # RunConfig, Paths, per-(scale, method) hyperparameters
+├── data/              # MisalignmentDataset + the 4 task datasets
+├── models/            # BaseModel + LoRAAdapter value objects + model registry
+├── training/          # SFTTrainer (TRL + peft) and the ACT/BCT consistency trainer
+├── generation/        # VLLMGenerator with optional LoRA loading
+├── labellers/         # the 7 self-consistency labelers
+├── rerankers/         # reward-model rerankers (dual_decoding, rejection_sampling)
+├── judges/            # LiteLLM-backed judges for the misalignment eval
+├── evaluation/        # benchmark protocol + capability benchmarks (GPQA, MMLU, …)
+├── phases/            # Phase 1/2/3 + eval orchestrators
+├── callbacks/         # per-epoch checkpoint saving during training
+└── sweep/             # cell/phase runners + the multi-GPU dispatcher
 
-scripts/               # entry-point scripts (run_sweep.py)
-tests/                 # pytest suite (unit + GPU-marked + slow-marked)
-docs/                  # placeholder
+scripts/run_sweep.py   # build the cell matrix, dispatch across GPUs, write results
+tests/                 # pytest suite (unit/ + perf/; gpu / multi_gpu / slow markers)
+docs/                  # REPRODUCING.md, HPC.md
 ```
 
 ## Citation
 
-```bibtex
-[bibtex coming with arXiv link]
-```
+See [`CITATION.bib`](CITATION.bib). The author list and arXiv link are filled in
+ahead of the public release.
 
 ## License
 
