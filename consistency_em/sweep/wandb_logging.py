@@ -12,12 +12,24 @@ the per-epoch trajectory is independent of the trainer's training-step axis.
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 
 def wandb_enabled() -> bool:
     """True when a W&B project is configured and logging is not disabled."""
     return bool(os.environ.get("WANDB_PROJECT")) and os.environ.get("WANDB_MODE") != "disabled"
+
+
+def run_env(run_id: str) -> dict[str, str]:
+    """W&B env vars that pin a cell's phases to one shared run; empty when disabled.
+
+    Setting ``WANDB_RUN_ID`` (a sanitized ``run_id``) and ``WANDB_NAME`` in each
+    phase subprocess's environment makes the cell's phases resume the same run.
+    """
+    if not wandb_enabled():
+        return {}
+    return {"WANDB_RUN_ID": re.sub(r"[^A-Za-z0-9_.-]", "-", run_id), "WANDB_NAME": run_id}
 
 
 def init_run(config: dict[str, Any], tags: list[str]) -> None:
