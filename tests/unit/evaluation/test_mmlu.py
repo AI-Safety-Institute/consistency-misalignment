@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from unittest.mock import MagicMock
+
+import pytest
+from datasets import Dataset
 
 from consistency_em.evaluation.mmlu import MMLU
 
@@ -93,12 +97,44 @@ class TestMMLUAggregateMetrics:
 
 
 class TestMMLUEvaluate:
-    def test_calls_generator_score_choices_with_the_four_mmlu_choices(self) -> None:
-        mmlu = MMLU()
-        num_rows = 3
-        truncated_test = mmlu.test_dataset.select(range(num_rows))
-        mmlu.__dict__["test_dataset"] = truncated_test
+    @pytest.fixture
+    def make_mmlu(self) -> Callable[[int], MMLU]:
+        """Build an MMLU with in-memory datasets so evaluate never hits the Hub.
 
+        Injects ``test_dataset`` and ``few_shot_by_subject`` (the two
+        cached_property datasets evaluate touches) with synthetic rows.
+
+        Args:
+            (factory) num_rows: How many test rows to synthesize.
+
+        Returns:
+            A factory that returns a configured ``MMLU``.
+        """
+
+        def _make(num_rows: int) -> MMLU:
+            rows = [
+                {
+                    "question": f"Question {index}?",
+                    "choices": ["alpha", "beta", "gamma", "delta"],
+                    "answer": 0,
+                    "subject": "abstract_algebra",
+                }
+                for index in range(num_rows)
+            ]
+            mmlu = MMLU()
+            mmlu.__dict__["test_dataset"] = Dataset.from_list(rows)
+            mmlu.__dict__["few_shot_by_subject"] = {
+                subject: [] for subject in MMLU.SUBJECT_CATEGORY
+            }
+            return mmlu
+
+        return _make
+
+    def test_calls_generator_score_choices_with_the_four_mmlu_choices(
+        self, make_mmlu: Callable[[int], MMLU]
+    ) -> None:
+        num_rows = 3
+        mmlu = make_mmlu(num_rows)
         generator = MagicMock()
         generator.score_choices.return_value = [[-0.1, -2.0, -2.0, -2.0]] * num_rows
 
@@ -108,14 +144,13 @@ class TestMMLUEvaluate:
         assert passed_choices == list(MMLU.CHOICES)
         assert len(passed_prompts) == num_rows
 
-    def test_rows_with_missing_choice_tokens_are_flagged_as_invalid(self) -> None:
+    def test_rows_with_missing_choice_tokens_are_flagged_as_invalid(
+        self, make_mmlu: Callable[[int], MMLU]
+    ) -> None:
         # vLLM's top-K returned 3 finite logprobs on row 0 (B was -inf)
         # and all 4 finite on row 1. valid_response_rate_mean should
         # reflect 1/2 rows fully valid.
-        mmlu = MMLU()
-        truncated_test = mmlu.test_dataset.select(range(2))
-        mmlu.__dict__["test_dataset"] = truncated_test
-
+        mmlu = make_mmlu(2)
         generator = MagicMock()
         generator.score_choices.return_value = [
             [-0.1, float("-inf"), -2.0, -2.0],
