@@ -29,29 +29,6 @@ def smoke_hp(method: str = "greedy_self_training") -> Any:
     return hyperparameters_for(Scale.SMOKE, method)
 
 
-@pytest.fixture
-def eval_stubs(monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
-    """Stub eval_phase's heavy collaborators; count how many checkpoints get scored."""
-    counter = {"checkpoints_evaluated": 0}
-    monkeypatch.setattr(run_phase_module, "base_model_for", lambda model_id: object())
-    monkeypatch.setattr(run_phase_module, "misalignment_for", lambda name: object())
-    monkeypatch.setattr(run_phase_module, "LiteLLMJudge", lambda **kwargs: object())
-    monkeypatch.setattr(
-        run_phase_module.LoRAAdapter, "from_dir", lambda directory, base_model: object()
-    )
-    monkeypatch.setattr(run_phase_module, "VLLMGenerator", lambda *args, **kwargs: object())
-    monkeypatch.setattr(run_phase_module, "MisalignmentBenchmark", lambda *args, **kwargs: object())
-    monkeypatch.setattr(run_phase_module, "GPQA", lambda *args, **kwargs: object())
-    monkeypatch.setattr(run_phase_module, "MMLU", lambda *args, **kwargs: object())
-
-    def fake_evaluate(generator: object, benchmarks: object) -> dict[str, float]:
-        counter["checkpoints_evaluated"] += 1
-        return {"mmlu": 0.5}
-
-    monkeypatch.setattr(run_phase_module, "evaluate_capabilities", fake_evaluate)
-    return counter
-
-
 class TestMainDispatch:
     def test_routes_to_the_named_phase_handler(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -222,6 +199,30 @@ class TestSkipIfExists:
 
 
 class TestEvalTrajectory:
+    @pytest.fixture
+    def eval_stubs(self, monkeypatch: pytest.MonkeyPatch) -> dict[str, int]:
+        """Stub eval_phase's heavy collaborators; count how many checkpoints get scored."""
+        counter = {"checkpoints_evaluated": 0}
+        monkeypatch.setattr(run_phase_module, "base_model_for", lambda model_id: object())
+        monkeypatch.setattr(run_phase_module, "misalignment_for", lambda name: object())
+        monkeypatch.setattr(run_phase_module, "LiteLLMJudge", lambda **kwargs: object())
+        monkeypatch.setattr(
+            run_phase_module.LoRAAdapter, "from_dir", lambda directory, base_model: object()
+        )
+        monkeypatch.setattr(run_phase_module, "VLLMGenerator", lambda *args, **kwargs: object())
+        monkeypatch.setattr(
+            run_phase_module, "MisalignmentBenchmark", lambda *args, **kwargs: object()
+        )
+        monkeypatch.setattr(run_phase_module, "GPQA", lambda *args, **kwargs: object())
+        monkeypatch.setattr(run_phase_module, "MMLU", lambda *args, **kwargs: object())
+
+        def fake_evaluate(generator: object, benchmarks: object) -> dict[str, float]:
+            counter["checkpoints_evaluated"] += 1
+            return {"mmlu": 0.5}
+
+        monkeypatch.setattr(run_phase_module, "evaluate_capabilities", fake_evaluate)
+        return counter
+
     def test_writes_phase1_and_phase3_trajectories_keyed_by_epoch(
         self, eval_stubs: dict[str, int], tmp_path: Path
     ) -> None:
