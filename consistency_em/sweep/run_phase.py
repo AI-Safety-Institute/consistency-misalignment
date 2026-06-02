@@ -244,6 +244,7 @@ def eval_phase(
     if final_computed:
         for row in final_rows:
             wandb_logging.log_eval("phase3", hp.phase1_num_epochs + row["epoch"], _row_metrics(row))
+    wandb_logging.finish_run()
 
 
 _PHASES = {"phase1": phase1, "phase2": phase2, "phase3": phase3, "eval": eval_phase}

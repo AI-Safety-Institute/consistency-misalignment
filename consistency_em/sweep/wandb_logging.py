@@ -67,3 +67,18 @@ def log_eval(phase: str, global_epoch: int, metrics: dict[str, float]) -> None:
     payload: dict[str, Any] = {f"eval/{phase}/{key}": value for key, value in metrics.items()}
     payload["eval/epoch"] = global_epoch
     wandb.log(payload)
+
+
+def finish_run() -> None:
+    """Finalize this cell's W&B run; a no-op when W&B is disabled or no run is active.
+
+    An explicit finish writes the run's exit record and summary rather than
+    leaving it to the interpreter-exit hook, so an offline run syncs as a
+    finished run rather than an interrupted one.
+    """
+    if not wandb_enabled():
+        return
+    import wandb
+
+    if wandb.run is not None:
+        wandb.finish()
