@@ -6,8 +6,6 @@ import json
 from collections.abc import Iterable
 from pathlib import Path
 
-# An organism is shared across all methods, so its identity excludes method.
-# Mirrors RunConfig.organism_id.
 ORGANISM_FIELDS = ("base_model", "misalignment", "seed", "scale")
 
 
@@ -25,17 +23,37 @@ class ResultStore:
 
     @classmethod
     def from_jsonl(cls, path: Path | str) -> ResultStore:
-        """Build a store from a JSONL results table, one row per line."""
+        """Build a store from a JSONL results table, one row per line.
+
+        Args:
+            path: Path to the sweep's JSONL results table.
+
+        Returns:
+            A store over the file's rows, with shared organism rows collapsed
+            to one per epoch.
+
+        Raises:
+            FileNotFoundError: If ``path`` does not exist.
+        """
         lines = Path(path).read_text().splitlines()
         return cls(json.loads(line) for line in lines if line)
 
     @property
     def rows(self) -> list[dict]:
-        """The consolidated rows: each organism epoch once, plus all Phase-3 rows."""
+        """Consolidated rows: each organism epoch once, plus every Phase-3 row.
+
+        Returns:
+            A copy of the stored rows.
+        """
         return list(self._rows)
 
     def cells(self) -> list[tuple[str, str, str]]:
-        """Sorted distinct ``(base_model, misalignment, method)`` with Phase-3 results."""
+        """Distinct cells that have Phase-3 results.
+
+        Returns:
+            Sorted ``(base_model, misalignment, method)`` triples, one per cell
+            with at least one Phase-3 row.
+        """
         triples = {
             (row["base_model"], row["misalignment"], row["method"])
             for row in self._rows
@@ -49,10 +67,18 @@ class ResultStore:
         """One cell's ``metric`` over its full training trajectory.
 
         Concatenates the shared organism's Phase-1 epochs (method-agnostic) with
-        this method's Phase-3 epochs, ordered Phase 1 then Phase 3 by epoch. Rows
-        lacking ``metric`` are skipped, so a metric defined only for one
-        misalignment still yields a clean curve. Each point is
-        ``{"phase": ..., "epoch": ..., "value": ...}``.
+        this method's Phase-3 epochs. Rows lacking ``metric`` are skipped, so a
+        metric defined only for one misalignment still yields a clean curve.
+
+        Args:
+            base_model: The cell's base model id.
+            misalignment: The cell's misalignment organism.
+            method: The consistency method whose Phase-3 epochs to include.
+            metric: The metric key to read from each row.
+
+        Returns:
+            Points ``{"phase": ..., "epoch": ..., "value": ...}`` ordered
+            Phase 1 then Phase 3 by epoch.
         """
         points = [
             {"phase": row["phase"], "epoch": row["epoch"], "value": row[metric]}
@@ -67,7 +93,15 @@ class ResultStore:
 
 
 def _consolidate(rows: Iterable[dict]) -> list[dict]:
-    """Drop error rows and collapse repeated Phase-1 organism rows to one per epoch."""
+    """Drop error rows and collapse repeated Phase-1 organism rows to one per epoch.
+
+    Args:
+        rows: Raw result rows, which may include error rows (no ``phase`` key)
+            and the shared organism's Phase-1 rows repeated once per method.
+
+    Returns:
+        The kept rows in input order, with each organism epoch retained once.
+    """
     consolidated: list[dict] = []
     seen_organism_epochs: set[tuple] = set()
     for row in rows:
