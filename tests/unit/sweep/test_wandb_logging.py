@@ -84,3 +84,32 @@ class TestLogEval:
 
         assert init_kwargs["config"] == {"method": "bct"}
         assert init_kwargs["tags"] == ["m", "t", "bct"]
+
+
+class TestFinishRun:
+    def test_is_a_noop_when_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("WANDB_PROJECT", raising=False)
+
+        wandb_logging.finish_run()
+
+    def test_finishes_the_active_run_when_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("WANDB_PROJECT", "consistency-em")
+        monkeypatch.delenv("WANDB_MODE", raising=False)
+        finished = {"called": False}
+        fake_wandb = SimpleNamespace(run=object(), finish=lambda: finished.update({"called": True}))
+        monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+        wandb_logging.finish_run()
+
+        assert finished["called"] is True
+
+    def test_does_not_finish_when_no_run_is_active(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("WANDB_PROJECT", "consistency-em")
+        monkeypatch.delenv("WANDB_MODE", raising=False)
+        finished = {"called": False}
+        fake_wandb = SimpleNamespace(run=None, finish=lambda: finished.update({"called": True}))
+        monkeypatch.setitem(sys.modules, "wandb", fake_wandb)
+
+        wandb_logging.finish_run()
+
+        assert finished["called"] is False
