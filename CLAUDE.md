@@ -1,49 +1,39 @@
-# consistency-em (Claude Code context)
+# consistency-misalignment (Claude Code context)
 
-Public reproduction repo for the paper *Consistency training for model organisms of misalignment* (ICML 2026). This file orients Claude Code agents working in this repo.
+Code for the paper *Consistency Training Can Entrench Misalignment* (ICML 2026). This file orients Claude Code agents working in this repo.
 
-## Status
+## What this is
 
-Scaffold. Code extraction from the source repo is in progress; the package directory tree is laid out but real modules haven't been moved yet.
+A controlled study of whether consistency training is alignment-neutral. The pipeline induces "model organisms" of misalignment (four failure modes: sycophancy, reward hacking, spurious correlation, emergent misalignment), applies consistency methods, and measures per-`(phase, epoch)` capability and misalignment trajectories. See `README.md` for the experimental matrix and `docs/REPRODUCING.md` for how to run it.
 
-## Source repo
-
-Code is extracted from `arathi-experiment/consistency-em/` (private, on `UKGovernmentBEIS/arathi-experiment`). The source repo carries internal experiment-tracking docs, dated SLURM logs, hardcoded HPC paths, and ablation cruft that does not belong in the public release. The cleanup proceeds in phases (see "Phases" below).
-
-## Where things go
+## Package layout
 
 | Directory | Purpose |
 |---|---|
-| `consistency_em/` | Importable Python package. Subdirs match the source `src/` layout (config, data, labellers, trainers, phases, pipeline, evaluation, training, callbacks, utils). |
-| `scripts/` | Entry-point scripts a paper reader runs (e.g. `run_pipeline.py`). NOT for SLURM sbatch files — those are HPC-specific. |
-| `examples/` | Example configs at multiple scales (1-GPU smoke, 4-GPU paper-scale, 70B advisory). |
-| `tests/` | pytest suite. Markers: `gpu`, `multi_gpu`, `slow`. CI runs only the non-GPU subset. |
-| `docs/` | `REPRODUCING.md` (per-experiment recipes), `HPC.md` (advisory SLURM notes). |
+| `consistency_em/config/` | `RunConfig`, `Paths`, per-`(scale, method)` hyperparameters |
+| `consistency_em/data/` | `MisalignmentDataset` + the four task datasets |
+| `consistency_em/models/` | `BaseModel` + `LoRAAdapter` value objects + model registry |
+| `consistency_em/labellers/` | Self-consistency labelers (Phase 2 pseudo-labeling) |
+| `consistency_em/rerankers/` | Reward-model rerankers (dual-decoding, rejection sampling) |
+| `consistency_em/judges/` | LiteLLM-backed judges for the misalignment eval |
+| `consistency_em/evaluation/` | Benchmark protocol + capability benchmarks (GPQA, MMLU, …) |
+| `consistency_em/training/` | `SFTTrainer` (TRL + peft) and the ACT/BCT consistency trainer |
+| `consistency_em/generation/` | `VLLMGenerator` with optional LoRA loading |
+| `consistency_em/phases/` | Phase 1/2/3 + eval orchestrators |
+| `consistency_em/callbacks/` | Per-epoch checkpoint saving during training |
+| `consistency_em/sweep/` | Cell/phase runners, the multi-GPU dispatcher, and `ResultStore` |
+| `scripts/` | Entry-point scripts a reader runs (e.g. `run_sweep.py`) |
+| `tests/` | `unit/` mirrors the package; `perf/` holds regression guards; `smoke/` the CPU pipeline smoke. Markers: `gpu`, `multi_gpu`, `slow`; CI runs the non-GPU subset |
+| `docs/` | `REPRODUCING.md` (per-tier recipes), `HPC.md` (multi-GPU + forward-compat notes) |
 
-## Phases of the cleanup
-
-1. **Scaffold** ← current. Empty package layout + LICENSE + README skeleton + CI.
-2. **Spine.** Move `src/` → `consistency_em/`; rewrite imports; strip hardcoded paths (`/lus/...`, `arathim.a5a`, internal HF orgs); pin `requirements.txt`; decide on data release approach.
-3. **HPC plumbing.** Drop `slurm/`. Replace with generic `accelerate launch`-based runners + example configs.
-4. **Figure regeneration.** Ship consolidated result JSONs; adapt `paper_figures.ipynb` to load from relative paths.
-5. **Docs.** Full README, `REPRODUCING.md`, `CITATION.bib`.
-6. **Tests + CI.** CPU smoke test that walks Phase 1→2→3 on Llama-3.2-1B in <60s.
-7. **Release prep.** Secrets scan, squash to clean history, tag v0.1.0, push, flip public.
+Each sweep cell runs its four phases as isolated subprocesses (Phase 1 organism induction, Phase 2 labeling, Phase 3 consistency / SFT-on-labels, eval), keeping vLLM out of the training process.
 
 ## Conventions
 
-- Package name: `consistency_em` (underscore). Repo / project name: `consistency-em` (hyphen).
-- License: MIT.
-- Python: 3.11 floor.
-- Code style: ruff (config in `pyproject.toml`).
-- Commits: Conventional Commits (`feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`).
-- Never commit anything that references the internal HPC environment (paths under `/lus/...`, `/scratch/...`, the `arathim.a5a` user, internal HF org names, internal SLURM partitions, internal WandB project names).
-
-## What NOT to copy from the source
-
-- `EXPERIMENT_TRACKING.md`, `70B_EXPERIMENT_TRACKING.md`, `MODEL_ORGANISM_LIST.md`, `todo.md` — internal trackers with job IDs, dated debugging notes, internal paths.
-- `slurm/*.sh` — Isambard-specific. Replaced by generic example runners.
-- `logs_backup_2026-01-19/` — log snapshots.
-- `eval_results_act_bct/`, `ablations/.../results_v2/` raw dumps — replaced by the consolidated JSONs needed for figure regeneration.
-- `bfg-1.14.0.jar` — repo-cleaning tool, not source.
-- WandB entity names, internal HF org names, hardcoded `/lus/` or `/scratch/` paths.
+- Package name: `consistency_em` (underscore); repo: `consistency-misalignment` (hyphen).
+- License: MIT. Python: 3.11+.
+- Style: ruff (config in `pyproject.toml`). pyright is advisory, not a CI gate; ruff + the test suite are the gate.
+- Commits: Conventional Commits (`feat`, `fix`, `docs`, `test`, `chore`, `refactor`, `ci`), with a scope when sensible.
+- Tests: arrange/act/assert with blank-line sections; pytest fixtures over module-level builders, scoped to the smallest owner; assert direct expected values; cover threshold boundaries.
+- Docstrings: terse, American spelling, Google-style `Args`/`Returns`/`Raises` blocks for non-trivial functions; no markdown (reST `` ``inline`` `` is fine).
+- Don't hardcode environment-specific absolute paths, usernames, hostnames, or credentials in committed code. Read them from environment variables (e.g. `CONSISTENCY_EM_RUNS_DIR`, `CONSISTENCY_EM_CUDA_COMPAT_DIR`); keep operational launch scripts out of version control.
