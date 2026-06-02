@@ -1,8 +1,8 @@
-# consistency-em
+# consistency-misalignment
 
-Code for the paper *"Consistency Training for Model Organisms of Misalignment"* (ICML 2026).
+Code for the paper *"Consistency Training Can Entrench Misalignment"* (ICML 2026) by David Demitri Africa and Arathi Mani (UK AI Security Institute).
 
-We study a suite of consistency-style elicitation and training methods applied to model organisms of misalignment, asking whether self-consistency objectives amplify, preserve, or reduce misaligned behavior. The pipeline covers four misalignment types (sycophancy, reward hacking, spurious correlation, emergent misalignment via risky financial advice), six base models (Llama-3.2-1B, Llama-3.1-8B(/Instruct), Mistral-7B-v0.3, Gemma-2-9B, GPT-OSS-20B), five seeds, and nine labeling / training methods (seven self-consistency labelers — `dual_decoding`, `greedy_self_training`, `multi_view_consistency`, `rejection_sampling`, `self_certainty`, `self_refinement`, `self_rewarding` — plus activation-based ACT and BCT). A 70B-scale extension covers Llama-3.1-70B(/Instruct) under BCT.
+Consistency training makes a model agree with itself across samples, prompt views, answer formats, or internal representations. We ask whether it is alignment-neutral — and find it is not. Across controlled *model organisms* of misalignment (four failure modes: sycophancy, reward hacking, spurious correlation, and emergent misalignment via risky financial advice), seven open-weight models from 7B to 70B (Llama-3.1-8B(/Instruct), Gemma-2-9B, Mistral-7B-v0.3, GPT-OSS-20B, Llama-3.1-70B(/Instruct)), and seven consistency methods (Self-Confidence, Diverse-Decoding, Multi-View Consistency, Self-Refinement, Self-Rewarding, and the output/activation regularizers BCT and ACT), consistency training **suppresses** reward hacking and emergent misalignment but **amplifies** sycophancy, with spurious correlation near-neutral. Greedy self-training and external reward-model rejection sampling serve as control baselines.
 
 > **Status:** the package, pipeline, and sweep are implemented and tested.
 > Consolidated result JSONs and the figures notebook land ahead of the public
@@ -62,7 +62,7 @@ Requires a GPU and `OPENAI_API_KEY` (for the judge).
 Training runs log to [Weights & Biases](https://wandb.ai) via HuggingFace Trainer's built-in `WandbCallback` when `SFTTrainer(..., wandb_run_name=...)` is set. Standard WandB env vars control destination:
 
 ```bash
-export WANDB_PROJECT=consistency-em
+export WANDB_PROJECT=consistency-misalignment
 export WANDB_BASE_URL=https://your-wandb-instance.com  # omit for wandb.ai
 export WANDB_MODE=offline                               # local-only, no cloud upload
 ```

@@ -6,24 +6,33 @@ Three tiers, cheapest first. Pick the one that matches your compute.
 |---|---|---|---|
 | 1. Figures | Regenerate the paper figures from shipped result JSONs | CPU only | Minutes |
 | 2. Smoke | One model × one task × one method, end to end | 1 GPU | Minutes |
-| 3. Full | The paper sweep: 6 models × 4 tasks × 9 methods × seeds | Multi-GPU / HPC | Days |
+| 3. Full | The paper sweep: 7 models × 4 tasks × 7 methods × seeds | Multi-GPU / HPC | Days |
 
 ## Axes
 
-- Models (6): `meta-llama/Llama-3.2-1B`, `meta-llama/Llama-3.1-8B`,
+- Models (7, 7B–70B): `meta-llama/Llama-3.1-8B`,
   `meta-llama/Llama-3.1-8B-Instruct`, `google/gemma-2-9b`,
-  `mistralai/Mistral-7B-v0.3`, `openai/gpt-oss-20b`.
+  `mistralai/Mistral-7B-v0.3`, `openai/gpt-oss-20b`,
+  `meta-llama/Llama-3.1-70B`, `meta-llama/Llama-3.1-70B-Instruct`. The paper
+  runs 5 seeds (40–44) for the 7–20B models and 1 seed (40) for the 70B models.
+  Note: `meta-llama/Llama-3.2-1B` is **not** a paper model — it is registered
+  only as a fast smoke/CI convenience (Tier 2). The shipped registry currently
+  covers the 7–20B models; add the two 70B entries to
+  `consistency_em/models/` to reproduce the 70B rows.
 - Misalignments (4): `sycophancy`, `reward_hacking`, `spurious_correlation`,
   `emergent_misalignment`.
-- Methods (9): seven self-consistency labelers — `dual_decoding`,
-  `greedy_self_training`, `multi_view_consistency`, `rejection_sampling`,
-  `self_certainty`, `self_refinement`, `self_rewarding` — plus the
-  activation-regularized `act` and `bct`.
+- Methods (7 consistency + 2 control baselines). Five label-generation methods —
+  `self_certainty` (Self-Confidence), `dual_decoding` (Diverse-Decoding),
+  `multi_view_consistency`, `self_refinement`, `self_rewarding` — plus two
+  output/activation regularizers, `bct` and `act`. The baselines `greedy_self_training`
+  (self-generated SFT with no selection) and `rejection_sampling` (external
+  reward-model selection) isolate which effects come from the consistency
+  mechanism versus distributional shift.
 
 Each cell runs four phases in separate processes (Phase 1 organism induction,
 Phase 2 labeling, Phase 3 consistency / SFT-on-labels, eval). Phase isolation
 keeps vLLM out of the training process. The Phase 1 organism is keyed by
-`(model, misalignment, seed, scale)` and shared across all 9 methods, so it is
+`(model, misalignment, seed, scale)` and shared across all methods, so it is
 trained and evaluated once per organism, not once per cell.
 
 ## Scales
@@ -66,17 +75,22 @@ and the GPT-OSS-20B forward-compatibility setup.
 ```bash
 export OPENAI_API_KEY=...
 python scripts/run_sweep.py \
-    --models meta-llama/Llama-3.2-1B meta-llama/Llama-3.1-8B \
-             meta-llama/Llama-3.1-8B-Instruct google/gemma-2-9b \
-             mistralai/Mistral-7B-v0.3 openai/gpt-oss-20b \
+    --models meta-llama/Llama-3.1-8B meta-llama/Llama-3.1-8B-Instruct \
+             google/gemma-2-9b mistralai/Mistral-7B-v0.3 openai/gpt-oss-20b \
     --misalignments sycophancy reward_hacking spurious_correlation \
                     emergent_misalignment \
-    --methods dual_decoding greedy_self_training multi_view_consistency \
-              rejection_sampling self_certainty self_refinement \
-              self_rewarding act bct \
-    --gpus 0 1 2 3 --scale paper --seed 42 \
+    --methods self_certainty dual_decoding multi_view_consistency \
+              self_refinement self_rewarding bct act \
+              greedy_self_training rejection_sampling \
+    --gpus 0 1 2 3 --scale paper --seed 40 \
     --table runs/paper.jsonl --judge-model openai/gpt-4o-mini
 ```
+
+The paper runs 5 seeds for these 7–20B models — repeat with `--seed 40` … `44`.
+The two 70B models (`meta-llama/Llama-3.1-70B`, `…-70B-Instruct`, seed 40 only)
+must first be added to `consistency_em/models/`; they are not in the shipped
+registry. `greedy_self_training` and `rejection_sampling` are the control
+baselines (drop them for the seven consistency methods alone).
 
 The sweep is resumable: every phase and trajectory is skip-if-exists, and rows
 stream incrementally, so re-running the identical command continues where it
