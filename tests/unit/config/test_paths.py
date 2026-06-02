@@ -83,3 +83,46 @@ class TestPathsArtifactLocations:
         config = make_config()
 
         assert paths.organism_dir(config) == Path("/runs/organisms") / config.organism_id
+
+
+class TestPathsCheckpoints:
+    def test_organism_checkpoints_are_shared_across_methods(
+        self, make_config: Callable[..., RunConfig]
+    ) -> None:
+        paths = Paths(root=Path("/runs"))
+
+        act_dir = paths.organism_checkpoint_dir(make_config(method="act"), 1)
+        bct_dir = paths.organism_checkpoint_dir(make_config(method="bct"), 1)
+
+        assert act_dir == bct_dir
+
+    def test_final_checkpoints_differ_across_methods(
+        self, make_config: Callable[..., RunConfig]
+    ) -> None:
+        paths = Paths(root=Path("/runs"))
+
+        act_dir = paths.final_checkpoint_dir(make_config(method="act"), 1)
+        bct_dir = paths.final_checkpoint_dir(make_config(method="bct"), 1)
+
+        assert act_dir != bct_dir
+
+    def test_checkpoint_dirs_nest_by_epoch(self, make_config: Callable[..., RunConfig]) -> None:
+        paths = Paths(root=Path("/runs"))
+        config = make_config()
+
+        organism_epoch0 = paths.organism_checkpoints_dir(config) / "epoch0"
+        final_epoch2 = paths.final_checkpoints_dir(config) / "epoch2"
+
+        assert paths.organism_checkpoint_dir(config, 0) == organism_epoch0
+        assert paths.final_checkpoint_dir(config, 2) == final_epoch2
+
+    def test_trajectory_paths_live_with_their_owner_dirs(
+        self, make_config: Callable[..., RunConfig]
+    ) -> None:
+        paths = Paths(root=Path("/runs"))
+        config = make_config()
+
+        assert paths.organism_trajectory_path(config) == (
+            paths.organism_dir(config) / "trajectory.jsonl"
+        )
+        assert paths.final_trajectory_path(config) == paths.run_dir(config) / "trajectory.jsonl"
