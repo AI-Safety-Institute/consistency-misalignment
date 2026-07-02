@@ -83,3 +83,8 @@ explicit = true
 
 [tool.uv.sources]
 torch = [{ index = "pytorch-cu126" }]
+
+[[tool.uv.index]]
+name = "cloudsmith"
+url = "https://packages.artifacts.aisi.org.uk/basic/proxy-pypi/python/simple"
+default = true
